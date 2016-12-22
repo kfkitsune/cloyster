@@ -3,38 +3,20 @@ Master IA Vulnerability Management Automation Script
 
 Serves to automate the automation as much as it can be automated.
 ###>
-
-function PS-CertificateChooser {
-    <# Obtain listing of (potentially) valid certificates user has for authentication purposes #>
-    Push-Location
-    Set-Location cert:
-    Set-Location \
-    Set-Location Cert:\CurrentUser\My
-    $certificateListing = Get-ChildItem
-    Pop-Location
-
-    <# Prompt the user for which certificate to use #>
-    Write-Host("Type the number of the certificate you wish to use for authentication.")
-
-    <# User Input: Choose which cert to use
-        CHOSEN NUMBER MUST BE DECREMENTED BY ONE (1). POWERSHELL COUNTS CORRECTLY (0, 1, 2, ...)
-        Starts at '1' for human-readability...
-    #>
-    $i = 1;
-    foreach($z in $certificateListing) {
-        Write-Host("[" + $i.ToString() + "] ::: " + $z.Subject + " ::: " + $z.Thumbprint)
-        $i++;
-    }
-    $in = (Read-Host "Enter the number of the certificate to use, as shown above in brackets; e.g., '1'").ToInt32($null) - 1;
-
-    return $certificateListing.Get($in).Thumbprint #<--End state for this function
+try {  ### Begin module import block ###
+    Import-Module $env:USERPROFILE\Documents\AuthScripts\Modules\KFK-CommonFunctions.psm1 -Function ("Invoke-CertificateChooser") -ErrorAction Stop
 }
+catch [System.IO.FileNotFoundException] {
+    Write-Host -ForegroundColor Red "Unable to load required module... terminating execution..."
+    Start-Sleep -Seconds 5
+    exit
+}      ### End module import block ###
 
 Write-Host "~~ Script Initialization ~~" -ForegroundColor Yellow
 Write-Host "Please select your PKI certificate from the following listing to use for successive authentication actions"
 Write-Host ""
 
-$selectedCertificateThumbprint = PS-CertificateChooser
+$selectedCertificateThumbprint = Invoke-CertificateChooser
 Write-Host "Using thumbprint:" $selectedCertificateThumbprint -ForegroundColor Gray
 
 $i = 0  # Current script number.
