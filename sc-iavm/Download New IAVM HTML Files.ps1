@@ -153,16 +153,27 @@ try { Invoke-RestMethod -Method Post -CertificateThumbprint $chosenCertThumb -We
 # Go get the HTML files based off of the ID number in the filename
 $regexIAVM = [regex]"(\d{4}-[AB]-\d{4})" #Regex for IAVM ID in the filename
 $regexID = [regex]"\(ID\ (\d{6})\)"      #Regex for the ID number of the HTML page
+$iavmList = @{}
 if ((Get-Variable -Name iavmFilenames -ValueOnly).Count -ge 1) {
     $local:progress = 1
     foreach($q in (Get-Variable -Name iavmFilenames -ValueOnly).GetEnumerator()) {
         $fname = [string](Split-Path $q.Value -Leaf)  #Get the filename
         $iavmValue = ($regexIAVM.Match($fname)).Value  #Get 20XX-A/B/T/-NNNN
+        $iavmList.Add($q.Key, $iavmValue)
         $iavmHTMLID = ($regexID.Match($fname)).Groups[1].Value #Get the 6 digit HTML ID
         Write-Host '('($local:progress++)/($iavmFilenames.Count)')' Saving HTML for $iavmValue from $IAVMHTMLDownloadURI.Replace("FOOBARBAZ",$iavmHTMLID)
         Invoke-RestMethod -Method Get -CertificateThumbprint $chosenCertThumb -WebSession $webSession -Uri $IAVMHTMLDownloadURI.Replace("FOOBARBAZ",$iavmHTMLID) -OutFile $fname.Replace("xml","htm")
     }
 }
+
+<# Create and open a list of new IAVM IDs for copying the new IDs elsewhere #>
+$tmp_file_name = "new_iavm" + (Get-Random -Minimum 100000 -Maximum 9999999).ToString() + ".txt"
+"Here are the new IAVM IDs to copy to the IAVM report`r`n" >> $tmp_file_name
+($iavmList.GetEnumerator() | Select-Object Value | ConvertTo-Csv -NoTypeInformation).Trim('"') | Select-Object -Skip 1 >> $tmp_file_name
+Invoke-Item $tmp_file_name
+Write-Host -ForegroundColor DarkGray "Allowing notepad to open (1.5s)..."
+Start-Sleep -Milliseconds 1500
+Remove-Item $tmp_file_name
 
 Pop-Location
 Write-Host -ForegroundColor Cyan "Cleaning up downloaded ZIP and working directory..."
