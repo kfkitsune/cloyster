@@ -1,5 +1,6 @@
 param(
-    [string]$paramPKIThumbprint
+    [string]$paramPKIThumbprint,
+    [boolean]$paramUseDefaults
 )
 
 try {  ### Begin module import block ###
@@ -50,13 +51,18 @@ if ($chosenCertThumb -eq "") {  # Only execute if we don't have a thumbprint fro
     Write-Host("Chosen certificate thumbprint ::: " + $chosenCertThumb)
 }
 
-### All vs. since a date... also an exit point.
-Write-Host "This script retrieves HTML files from the IAVM portal."
-Write-Host "Do you want: [1] IAVMs released in the past seven (7) days;"
-Write-Host "             [2] IAVMs released since a specific date; or"
-Write-Host "             [3] All IAVMs."
-Write-Host "Other or invalid responses exit this script."
-$selection = Read-Host -Prompt "Enter your selection"
+if (!$use_defaults) {  <# We didn't want to use defaults, so get the information we need #>
+    # All vs. since a date... also an exit point.
+    Write-Host "This script retrieves HTML files from the IAVM portal."
+    Write-Host "Do you want: [1] IAVMs released in the past seven (7) days;"
+    Write-Host "             [2] IAVMs released since a specific date; or"
+    Write-Host "             [3] All IAVMs."
+    Write-Host "Other or invalid responses exit this script."
+    
+    $selection = Read-Host -Prompt "Enter your selection" 
+}
+else { $selection = 1 }  <# The 'default' is in the last seven (7) days (response '1') #>
+
 if ($selection -eq 1) {
     $date = Get-Date (Get-Date).AddDays(-7) -UFormat "%Y-%m-%d"
     $XMLDownloadURI += "&releasedStart=" + $date
@@ -80,7 +86,7 @@ elseif ($selection -eq 2) {  # Since a specific date: &releasedStart=2016-05-18 
         Exit
     }
 }
-elseif ($selection -eq 3) { <# "default" case #> }
+elseif ($selection -eq 3) { <# "default" case (insofar that we don't need to modify the URI) #> }
 else {
     Exit
 }
@@ -147,16 +153,27 @@ try { Invoke-RestMethod -Method Post -CertificateThumbprint $chosenCertThumb -We
 # Go get the HTML files based off of the ID number in the filename
 $regexIAVM = [regex]"(\d{4}-[AB]-\d{4})" #Regex for IAVM ID in the filename
 $regexID = [regex]"\(ID\ (\d{6})\)"      #Regex for the ID number of the HTML page
+$iavmList = @{}
 if ((Get-Variable -Name iavmFilenames -ValueOnly).Count -ge 1) {
     $local:progress = 1
     foreach($q in (Get-Variable -Name iavmFilenames -ValueOnly).GetEnumerator()) {
         $fname = [string](Split-Path $q.Value -Leaf)  #Get the filename
         $iavmValue = ($regexIAVM.Match($fname)).Value  #Get 20XX-A/B/T/-NNNN
+        $iavmList.Add($q.Key, $iavmValue)
         $iavmHTMLID = ($regexID.Match($fname)).Groups[1].Value #Get the 6 digit HTML ID
         Write-Host '('($local:progress++)/($iavmFilenames.Count)')' Saving HTML for $iavmValue from $IAVMHTMLDownloadURI.Replace("FOOBARBAZ",$iavmHTMLID)
         Invoke-RestMethod -Method Get -CertificateThumbprint $chosenCertThumb -WebSession $webSession -Uri $IAVMHTMLDownloadURI.Replace("FOOBARBAZ",$iavmHTMLID) -OutFile $fname.Replace("xml","htm")
     }
 }
+
+<# Create and open a list of new IAVM IDs for copying the new IDs elsewhere #>
+$tmp_file_name = "new_iavm" + (Get-Random -Minimum 100000 -Maximum 9999999).ToString() + ".txt"
+"Here are the new IAVM IDs to copy to the IAVM report`r`n" >> $tmp_file_name
+($iavmList.GetEnumerator() | Select-Object Value | ConvertTo-Csv -NoTypeInformation).Trim('"') | Select-Object -Skip 1 >> $tmp_file_name
+Invoke-Item $tmp_file_name
+Write-Host -ForegroundColor DarkGray "Allowing notepad to open (1.5s)..."
+Start-Sleep -Milliseconds 1500
+Remove-Item $tmp_file_name
 
 Pop-Location
 Write-Host -ForegroundColor Cyan "Cleaning up downloaded ZIP and working directory..."
