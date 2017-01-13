@@ -1,5 +1,6 @@
 param(
-    [string]$paramPKIThumbprint
+    [string]$paramPKIThumbprint,
+    [boolean]$paramUseDefaults
 )
 
 try {  ### Begin module import block ###
@@ -50,13 +51,18 @@ if ($chosenCertThumb -eq "") {  # Only execute if we don't have a thumbprint fro
     Write-Host("Chosen certificate thumbprint ::: " + $chosenCertThumb)
 }
 
-### All vs. since a date... also an exit point.
-Write-Host "This script retrieves HTML files from the IAVM portal."
-Write-Host "Do you want: [1] IAVMs released in the past seven (7) days;"
-Write-Host "             [2] IAVMs released since a specific date; or"
-Write-Host "             [3] All IAVMs."
-Write-Host "Other or invalid responses exit this script."
-$selection = Read-Host -Prompt "Enter your selection"
+if (!$use_defaults) {  <# We didn't want to use defaults, so get the information we need #>
+    # All vs. since a date... also an exit point.
+    Write-Host "This script retrieves HTML files from the IAVM portal."
+    Write-Host "Do you want: [1] IAVMs released in the past seven (7) days;"
+    Write-Host "             [2] IAVMs released since a specific date; or"
+    Write-Host "             [3] All IAVMs."
+    Write-Host "Other or invalid responses exit this script."
+    
+    $selection = Read-Host -Prompt "Enter your selection" 
+}
+else { $selection = 1 }  <# The 'default' is in the last seven (7) days (response '1') #>
+
 if ($selection -eq 1) {
     $date = Get-Date (Get-Date).AddDays(-7) -UFormat "%Y-%m-%d"
     $XMLDownloadURI += "&releasedStart=" + $date
@@ -80,7 +86,7 @@ elseif ($selection -eq 2) {  # Since a specific date: &releasedStart=2016-05-18 
         Exit
     }
 }
-elseif ($selection -eq 3) { <# "default" case #> }
+elseif ($selection -eq 3) { <# "default" case (insofar that we don't need to modify the URI) #> }
 else {
     Exit
 }
