@@ -63,8 +63,11 @@ foreach ($target in $target_ip_addrs) {
     [void]$template_node.ParentNode.AppendChild($editable_node)
 }
 # Remove the source templated node
-$template_node.ParentNode.RemoveChild($template_node)
+[void]$template_node.ParentNode.RemoveChild($template_node)
 
 # Write-out the new XML file
 $output_filename = (Get-Location).ToString() + "\Remove IP Nessus File - Populated.nessus"
 $nessusFile.Save($output_filename)
+
+Write-Host -ForegroundColor Green "Complete!"
+Start-Sleep -Seconds 2
