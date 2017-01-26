@@ -4,6 +4,7 @@ param(
 <#
     Generates two files where there is a
     Plugin->IAVM mapping, and IAVM->Plugin mapping
+    SecurityCenter API Level: v5.x
 #>
 
 try {  ### Begin module import block ###
@@ -113,7 +114,9 @@ function SC-GetCredentials {
             }
         } #End credential capture loop
         if ($Script:scURI -eq "") {
-            $Script:scURI = Read-Host -Prompt "The SecurityCenter request.php URI is not defined... please enter the full URI to the request.php file."
+            $Script:scURI = Read-Host -Prompt "The SecurityCenter URI ... please enter the full URI to the SecurityCenter (w/o trailing slash)"
+            # Pre-make the base REST API URI
+            $Script:scURI = $Script:scURI + "/rest/"
         }
         $Local:expCreds = @{}
         <#if ($scriptDebug) {
@@ -127,18 +130,17 @@ function SC-GetCredentials {
         $Local:expCreds | ConvertTo-Json | Out-File -FilePath $scCredentialsFileName
     }
 }
-function SC-BuildInputString {
-    param($req);
-    $requestId = Get-Random -Minimum 10000 -Maximum 19999
+function SC-BuildQueryString {
+    param($queryJSON);
 
-    # Generate the request string
-    $reqStr = "request_id=" + $requestId + "&module=" + $req.module + "&action=" + $req.action + "&token=" + $Script:scToken
-    
-    if ($req.input -ne "") {
-        $tmp = $req.input | ConvertTo-Json
-        $tmp = [System.Web.HttpUtility]::UrlEncode($tmp);
-        $reqStr = $reqStr + "&input=" + $tmp
+    $reqStr = "?"
+    foreach ($Local:item in $queryJSON.GetEnumerator()) {
+        $reqStr += $Local:item.Name + '=' + $Local:item.Value + '&'
     }
+    $reqStr = $reqStr.TrimEnd('&')
+    # Generate the request string
+    #$reqStr = [System.Web.HttpUtility]::UrlEncode(($reqStr))
+    
     return $reqStr;
 }
 
@@ -146,16 +148,35 @@ function SC-BuildInputString {
     $scJSONInput is hash table/object @{}
 #>
 function SC-Connect {
-    param([string]$scModule, [string]$scAction, $scJSONInput);
-    $request = @{"module" = $scModule;
+    param(
+        <# What are we trying to accomplish/get via the API? #>
+        [string]$scResource, 
+        <# Which HTTP Method are we using? #>
+        [ValidateSet("GET","POST","DELETE")]
+            [string]$scHTTPMethod,
+        $scQueryString, 
+        $scJSONInput
+    );
+    <#$request = @{"module" = $scModule;
                  "action" = $scAction;
-                 "input" = $scJSONInput;}
+                 "input" = $scJSONInput;}#>
     #echo $request;
-    $requestString = SC-BuildInputString($request);
+    #$requestString = SC-BuildInputString($request);
     #echo ">>SENDING<<: " $requestString
 
     #Send it.
-    $Script:scResponse = (Invoke-RestMethod -Uri $scURI -Method POST -CertificateThumbprint $chosenCertThumb -Body $requestString -WebSession $scSession -TimeoutSec 180);
+    if ($scHTTPMethod -eq "POST") {
+        $Local:tmpUri = $scURI + $scResource
+        $Script:scResponse = (Invoke-RestMethod -Uri $Local:tmpUri -Method POST -CertificateThumbprint $chosenCertThumb -Body $scJSONInput -WebSession $scSession -TimeoutSec 180 -Headers @{"X-SecurityCenter"=$Script:scToken});
+    }
+    elseif ($scHTTPMethod -eq "GET") {
+        $Local:tmpUri = $scURI + $scResource + $scQueryString
+        $Script:scResponse = (Invoke-RestMethod -Uri $Local:tmpUri -Method GET -CertificateThumbprint $chosenCertThumb -WebSession $scSession -TimeoutSec 180 -Headers @{"X-SecurityCenter"=$Script:scToken});
+    }
+    else {
+        $Local:tmpUri = $scURI + $scResource
+        $Script:scResponse = (Invoke-RestMethod -Uri $Local:tmpUri -Method DELETE -CertificateThumbprint $chosenCertThumb -WebSession $scSession -TimeoutSec 180 -Headers @{"X-SecurityCenter"=$Script:scToken});
+    }
     #Write-Host("Received: " + $Script:scResponse)
     #Write-Host(">>RESPONSE CONTENTS<< ::: " + $Script:scResponse.response)
     if ($Script:scToken.Equals("")) {
@@ -167,18 +188,19 @@ function SC-Login {
     $json = @{}
     $json.Add("username", $scCredentials.GetNetworkCredential().UserName)
     $json.Add("password", $scCredentials.GetNetworkCredential().Password)
-    SC-Connect "auth" "login" $json;
+    SC-Connect -scResource "token" -scHTTPMethod POST -scJSONInput $json
 }
 function SC-Logout {
-    SC-Connect "auth" "logout"
+    SC-Connect -scResource "token" -scHTTPMethod DELETE
 }
 function SC-Get-IAVA {
     $json = @{ "size" = "3000";
                "type" = "active";
                "sortField" = "id";
                "filterField" = "xrefs:IAVA";
-               "filterString" = "A";};
-    SC-Connect "plugin" "init" $json;
+               "filterString" = "A";
+               "fields" = "id,name,xrefs";};
+    SC-Connect -scResource "plugin" -scHTTPMethod GET -scQueryString (SC-BuildQueryString -queryJSON $json)
     $Script:scIAVAs = $Script:scResponse.response.plugins;
 }
 function SC-Get-IAVB {
@@ -186,8 +208,9 @@ function SC-Get-IAVB {
                "type" = "active";
                "sortField" = "id";
                "filterField" = "xrefs:IAVB";
-               "filterString" = "B";};
-    SC-Connect "plugin" "init" $json;
+               "filterString" = "B";
+               "fields" = "id,name,xrefs";};
+    SC-Connect -scResource "plugin" -scHTTPMethod GET -scQueryString (SC-BuildQueryString -queryJSON $json)
     $Script:scIAVBs = $Script:scResponse.response.plugins;
 }
 function SC-Get-IAVT {
@@ -195,8 +218,9 @@ function SC-Get-IAVT {
                "type" = "active";
                "sortField" = "id";
                "filterField" = "xrefs:IAVT";
-               "filterString" = "T";};
-    SC-Connect "plugin" "init" $json;
+               "filterString" = "T";
+               "fields" = "id,name,xrefs";};
+    SC-Connect -scResource "plugin" -scHTTPMethod GET -scQueryString (SC-BuildQueryString -queryJSON $json)
     $Script:scIAVTs = $Script:scResponse.response.plugins;
 }
 
@@ -248,7 +272,7 @@ if ($chosenCertThumb -eq "") {  # Only execute if we don't have a thumbprint fro
 }
 
 <# Gotta log in before anything! #>
-Write-Host("You may be prompted for your PIN! If so, kindly provide it to the dialog to permit authentication. Thanks!") -ForegroundColor Green
+Write-Host("You may be prompted for your PIN! If so, would you kindly provide it to the dialog to permit authentication? Thanks!") -ForegroundColor Green
 Write-Host("Logging in; wait...")
 SC-Login;
 #Write-Host("We just got a /token/. We just got a \token\. We just got a |token|, I wonder what it is‽ ::: " + $scToken);
