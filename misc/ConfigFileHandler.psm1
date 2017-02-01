@@ -27,6 +27,8 @@ function Get-ConfigurationItem {
 
     Parameters:
         $configFilePath: Where the configuration file for the script is supposed to live.
+        $configSection: Which section of the config file are we looking in? Can be used to
+        merge otherwise seperate configs for like scripts, while seperating settings visually.
         $configSettingName: What setting are we looking for in the configuration file?
         $promptIfSettingDoesntExist: If the setting does not exist, the user is presented
         this string as part of the Read-Host phase to prompt them for the setting; e.g.,
@@ -41,6 +43,7 @@ function Get-ConfigurationItem {
     #>
     param(
         [string]$configFilePath,
+        [string]$configSection,
         [string]$configSettingName,
         [string]$promptIfSettingDoesntExist,
         [string]$forceValue
@@ -48,7 +51,7 @@ function Get-ConfigurationItem {
     if (!(Test-Path $configFilePath)) {  # We need to have a base XML config file to begin with.
         _Create-BaseXML -filePath $configFilePath
     }
-    $xmlDocument = Get-Content -Path $configFilePath
+    [xml]$xmlDocument = Get-Content -Path $configFilePath
     if (!$xmlDocument.config.$configSettingName) {  # If the setting doesn't already exist, set it.
         if ($forceValue) {  # Is this an item we don't need user-input for? E.g., Secure-String key
             $response = $forceValue
@@ -56,7 +59,7 @@ function Get-ConfigurationItem {
         else { # We need user input for this
             $response = Read-Host -Prompt $promptIfSettingDoesntExist
         }
-        _Update-Config -configFilePath $configFilePath -configSettingName $configSettingName -configSettingValue $response
+        _Update-Config -configFilePath $configFilePath -configSettingName $configSettingName -configSettingValue $response -configSection $configSection
         return $response
     }
     else {  # The setting exists, so get the setting.
@@ -64,22 +67,41 @@ function Get-ConfigurationItem {
     }
 
 }
+
+
 function _Update-Config {
+    <#
+    Handles writing new configuration settings to a specified configuration file, and creates
+    a new section if needed.
+    #>
     param(
         [string]$configFilePath,
+        [string]$configSection,
         [string]$configSettingName,
         [string]$configSettingValue
     )
     [xml]$config = Get-Content -Path $configFilePath
     # Get an editable XML node
     $newNode = $config.CreateElement($configSettingName)
+    # Does the desired section exist? If not, create it.
+    $targetSection = $config.SelectSingleNode('//config/script[@name="' + $configSection + '"]')
+    if (!$targetSection) {
+        $sectionElem = $config.CreateElement("script")
+        $sectionAtt = $config.CreateAttribute("name")
+        $sectionAtt.Value = $configSection
+        [void]$sectionElem.Attributes.Append($sectionAtt)
+        [void]$config.config.AppendChild($sectionElem)
+        $targetSection = $config.SelectSingleNode('//config/script[@name="' + $configSection + '"]')
+    }
     # Add the node (setting name only at this point) to the tree.
-    $config.config.AppendChild($newNode)
+    [void]$targetSection.AppendChild($newNode)
     # Set the value of the new configuration item
-    $config.config.$configSettingName = $configSettingValue
+    $targetSection.$configSettingName = $configSettingValue
     # Save out the modified XML.
     $config.Save($configFilePath)
 }
+
+
 function _Create-BaseXML {
     <#
     Create a bare-bones XML file at the passed in file path.
@@ -94,6 +116,8 @@ function _Create-BaseXML {
     }
     '<?xml version="1.0" encoding="utf-8"?>' > $filePath
     '<config>' >> $filePath
-    '  <species>kitsune</species>' >> $filePath
+    '  <script name="example">' >> $filePath
+    '    <species>kitsune</species>' >> $filePath
+    '  </script>' >> $filePath
     '</config>' >> $filePath
 }
