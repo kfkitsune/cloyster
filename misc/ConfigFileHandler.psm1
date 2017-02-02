@@ -9,12 +9,11 @@ Public Function:
 Examples:
 1) Set a value which requires user-input to configure.
 $configUri = Get-ConfigurationItem -configFilePath $configFile -configSettingName "uri" \
-    -configFileSection "example" \
-    -promptIfSettingDoesntExist "Please enter the URI for the API endpoint"
+    -configSection "example" -promptIfSettingDoesntExist "Please enter the URI for the API endpoint"
 
 2) Set a value which is set via programmatic configuration.
 $secureStringKey = Get-ConfigurationItem -configFilePath $configFile -configSettingName \
-    "secureStringKey" -forceValue $byteArray -configFileSection "example"
+    "secureStringKey" -forceValue $byteArray -configSection "example"
 #>
 
 
