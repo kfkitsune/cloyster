@@ -9,11 +9,12 @@ Public Function:
 Examples:
 1) Set a value which requires user-input to configure.
 $configUri = Get-ConfigurationItem -configFilePath $configFile -configSettingName "uri" \
+    -configFileSection "example" \
     -promptIfSettingDoesntExist "Please enter the URI for the API endpoint"
 
 2) Set a value which is set via programmatic configuration.
 $secureStringKey = Get-ConfigurationItem -configFilePath $configFile -configSettingName \
-    "secureStringKey" -forceValue $byteArray
+    "secureStringKey" -forceValue $byteArray -configFileSection "example"
 #>
 
 
@@ -42,9 +43,14 @@ function Get-ConfigurationItem {
         Handling the retrieved values is entirely up to the calling script.
     #>
     param(
+        [Parameter(Mandatory=$true)]
         [string]$configFilePath,
+        [Parameter(Mandatory=$true)]
         [string]$configSection,
+        [Parameter(Mandatory=$true)]
         [string]$configSettingName,
+
+        # One of these should ideally be set... but handle the prompt if not set.
         [string]$promptIfSettingDoesntExist,
         [string]$forceValue
     )
@@ -52,18 +58,22 @@ function Get-ConfigurationItem {
         _Create-BaseXML -filePath $configFilePath
     }
     [xml]$xmlDocument = Get-Content -Path $configFilePath
-    if (!$xmlDocument.config.$configSettingName) {  # If the setting doesn't already exist, set it.
+    $targetSetting = $xmlDocument.SelectSingleNode('//config/script[@name="' + $configSection + '"]/' + $configSettingName)
+    if (!$targetSetting) {  # If the setting doesn't already exist, set it.
         if ($forceValue) {  # Is this an item we don't need user-input for? E.g., Secure-String key
             $response = $forceValue
         }
         else { # We need user input for this
+            if (!$promptIfSettingDoesntExist) {  # Be nice and set this if it is unset
+                $promptIfSettingDoesntExist = "Enter a setting for '" + $configSettingName + "'."
+            }
             $response = Read-Host -Prompt $promptIfSettingDoesntExist
         }
-        _Update-Config -configFilePath $configFilePath -configSettingName $configSettingName -configSettingValue $response -configSection $configSection
+        _Update-Config -configFilePath $configFilePath -configSettingName $configSettingName -configSettingValue (_Store-Setting -setting $response) -configSection $configSection
         return $response
     }
     else {  # The setting exists, so get the setting.
-        return $xmlDocument.config.$configSettingName
+        return (_Retrieve-Setting -b64Serializedinput $targetSetting.'#text')
     }
 
 }
@@ -75,9 +85,13 @@ function _Update-Config {
     a new section if needed.
     #>
     param(
+        [Parameter(Mandatory=$true)]
         [string]$configFilePath,
+        [Parameter(Mandatory=$true)]
         [string]$configSection,
+        [Parameter(Mandatory=$true)]
         [string]$configSettingName,
+        [Parameter(Mandatory=$true)]
         [string]$configSettingValue
     )
     [xml]$config = Get-Content -Path $configFilePath
@@ -102,12 +116,45 @@ function _Update-Config {
 }
 
 
+function _Store-Setting {
+    <#
+    Because some setting types (arrays) lose some data when stored, just force serialize everything,
+    which saves the hassle of reconstituting most data structures, and may eliminate handling on the
+    script side of the house.
+    #>
+    param(
+        [Parameter(Mandatory=$true)]
+        $setting
+    )
+    # First, serialize the object|input we received
+    $Local:store = [System.Management.Automation.PSSerializer]::Serialize($setting)
+    # Then, return a base64 string for the serialized object XML.
+    return [System.Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($Local:store))
+}
+
+
+function _Retrieve-Setting {
+    <#
+    The opposite of the _Store-Setting function. Un-b64 the setting string, then deserialize.
+    #>
+    param(
+        [Parameter(Mandatory=$true)]
+        $b64Serializedinput
+    )
+    # First, reconstitute the serialized object XML by converting back from base64.
+    $Local:store = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($b64Serializedinput))
+    # Then, return the deserialized object.
+    return [System.Management.Automation.PSSerializer]::Deserialize($Local:store)
+}
+
+
 function _Create-BaseXML {
     <#
     Create a bare-bones XML file at the passed in file path.
     Reference: http://stackoverflow.com/questions/19245359/how-to-add-a-child-element-for-xml-in-powershell
     #>
     param(
+        [Parameter(Mandatory=$true)]
         [string]$filePath
     )
     if (Test-Path $filePath) {
@@ -121,3 +168,10 @@ function _Create-BaseXML {
     '  </script>' >> $filePath
     '</config>' >> $filePath
 }
+
+
+<#
+ Only export the single public function; there's no need to expose the other helpers
+ and they function just fine if not exported as well.
+#>
+Export-ModuleMember -Function Get-ConfigurationItem
