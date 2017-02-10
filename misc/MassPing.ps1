@@ -53,7 +53,7 @@ else {
 while ($index_lower -le $hostname_list.Length) {
     Test-Connection -ComputerName ($hostname_list | Select-Object -Index ($index_lower..$index_upper)) -AsJob -Delay 1 -Count 1 -ThrottleLimit 64
     # Increment the subset
-    $index_lower += $subset_increment
+    $index_lower = $index_upper + 1
     $index_upper += $subset_increment
 }
 
