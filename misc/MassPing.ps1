@@ -51,18 +51,21 @@ else {
 
 # Thread-out all the ping chunks; WMI does not like super huge ping jobs, so break it up for the old geezer that WMI is (and PS doesn't handle it)
 while ($index_lower -le $hostname_list.Length) {
-    Test-Connection -ComputerName ($hostname_list | Select-Object -Index ($index_lower..$index_upper)) -AsJob -Delay 1 -Count 1 -ThrottleLimit 64
+    Test-Connection -ComputerName ($hostname_list | Select-Object -Index ($index_lower..$index_upper)) -AsJob -Delay 1 -Count 1 -ThrottleLimit 64 | Out-Null
     # Increment the subset
     $index_lower = $index_upper + 1
     $index_upper += $subset_increment
 }
 
+Write-Host -ForegroundColor Cyan "Initiating ping attempts; this may take a moment..."
+
 # Wait until all ping jobs have completed...
 while ($true) {
     if (!(Get-Job -State Running)) {
         break
-        Start-Sleep -Seconds 1
     }
+    Write-Progress -Activity "Waiting for ping jobs to complete" -Status "Percent completed: " -PercentComplete (((Get-Job | Where-Object {$_.State -eq 'Completed'}).Count / (Get-Job).Count) * 100)
+    Start-Sleep -Milliseconds 500
 }
 
 # Get all jobs & store the results
