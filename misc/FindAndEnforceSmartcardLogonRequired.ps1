@@ -2,6 +2,28 @@
 Find accounts in Active Directory that do not have the SmartCardLogonRequired bit set.
 #>
 
+# We need admin... are we admin? If not, attempt to elevate to admin.
+# http://blogs.msdn.com/b/virtual_pc_guy/archive/2010/09/23/a-self-elevating-powershell-script.aspx
+Write-Host -ForegroundColor Green "Attempting to elevate to Administrator-level permissions..."
+$myWindowsID=[System.Security.Principal.WindowsIdentity]::GetCurrent()
+$myWindowsPrincipal=new-object System.Security.Principal.WindowsPrincipal($myWindowsID)
+$adminRole=[System.Security.Principal.WindowsBuiltInRole]::Administrator
+if ($myWindowsPrincipal.IsInRole($adminRole)) {
+   $Host.UI.RawUI.WindowTitle = $myInvocation.MyCommand.Definition + "(Elevated)"
+   $Host.UI.RawUI.BackgroundColor = "DarkBlue"
+   clear-host
+   Write-Host -ForegroundColor Yellow "Elevation complete. You are now free to move about the shell."
+}
+else {
+   $newProcess = new-object System.Diagnostics.ProcessStartInfo "PowerShell";
+   $strArguments = '-ExecutionPolicy Unrestricted -file "' + $myInvocation.MyCommand.Definition + '"' + ' -newPath "' + (Get-Location).Path + '"'
+   $newProcess.Arguments = $strArguments
+   $newProcess.Verb = "runas";
+   [System.Diagnostics.Process]::Start($newProcess);
+   exit
+}
+###############################################################################
+
 Import-Module ActiveDirectory
 # Get the AD User accounts, and include Smartcard Logon Required, Description, and Group Membership
 # Either use the OU set here, or get base OU path based on the current domain-joined system
@@ -21,7 +43,7 @@ if (!$ou) {  # If `$ou` is not set
 $ad_filter = {(Enabled -eq $true) -and 
               (SmartCardLogonRequired -eq $false)
              }
-             
+
 Write-Host -ForegroundColor Cyan "Getting information from AD; this may take a moment..."
 $ad_users = Get-ADUser -SearchBase $ou -SearchScope Subtree -Filter $ad_filter -Properties SmartcardLogonRequired,Description,MemberOf
 
@@ -40,3 +62,6 @@ if ($in.ToLower() -eq "y") {
         Set-ADUser -Identity $user.DistinguishedName -SmartcardLogonRequired $true
     }
 }
+
+Write-Host -NoNewLine "Press any key to continue..."
+$null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
