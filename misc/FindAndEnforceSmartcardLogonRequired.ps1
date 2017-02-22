@@ -52,7 +52,7 @@ $scl_exempt_filter = { $_.DistinguishedName -notmatch ".*(,OU=(Classroom|SVC|Ser
 
 $not_scl_enforced = $ad_users | Where-Object $scl_exempt_filter
 
-Write-Host -ForegroundColor Red "`r`nThe following accounts are do NOT have the SmartcardLogonRequired bit set..."
+Write-Host -ForegroundColor Red "`r`nThe following accounts do NOT have the SmartcardLogonRequired bit set..."
 $not_scl_enforced | Select-Object Name,SamAccountName,Description | Format-Table -AutoSize
 
 $in = Read-Host "Set SmartcardLogonRequired for all accounts identified above? Y/N"
