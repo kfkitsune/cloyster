@@ -4,6 +4,7 @@ param(
 <#
     Generates two files where there is a
     Plugin->IAVM mapping, and IAVM->Plugin mapping
+    SecurityCenter API Level: v5.x
 #>
 
 try {  ### Begin module import block ###
@@ -15,13 +16,13 @@ catch [System.IO.FileNotFoundException] {
     exit
 }      ### End module import block ###
 
-$scURI = ""; #Optional; Use if not using external cred/conf file.
+$scURI = "";  # Optional; Use if not using external cred/conf file.
 $chosenCertThumb = "";
 if ($paramPKIThumbprint) { [string]$chosenCertThumb = $paramPKIThumbprint }
 $scToken = "";
 $scSession = New-Object Microsoft.PowerShell.Commands.WebRequestSession;
-$scUsername = ""; #Optional; Use if not using external cred/conf file.
-$scPassword = ""; #Optional; Use if not using external cred/conf file.
+$scUsername = "";  # Optional; Use if not using external cred/conf file.
+$scPassword = "";  # Optional; Use if not using external cred/conf file.
 $scResponse = "";
 $scIAVAs = @{};
 $scIAVBs = @{};
@@ -32,11 +33,12 @@ $outputFileNamePlugToIAV = "Nessus Plugin to IAVM Mapping.csv"
 $outputFileNameIAVToPlug = "IAVM to Nessus Plugin Mapping.csv"
 $scCredentials = New-Object System.Management.Automation.PSCredential -ArgumentList "foo", (ConvertTo-SecureString "foo" -AsPlainText -Force)
 $scCredentialsFileName = ".\scCredentials.conf"
-$scCredentialsKey = @(); #If changed, scCredentials.conf is invalid and must be regenerated. Can be read from conf file. 24 bytes.
+$scCredentialsKey = @();  # If changed, scCredentials.conf is invalid and must be regenerated. Can be read from conf file. 24 bytes.
 $scCredentialsKeyFileName = ".\pluginIAVMMapping.conf"
 $scUseExternalCredentials = $true;
 $externalConfig = $true
 $scriptDebug = $false
+
 
 function Read-ConfigFile {
     [byte[]]$tmp = @()  # Storage for the key
@@ -47,24 +49,25 @@ function Read-ConfigFile {
         }
         $script:scCredentialsKey = $tmp
     }
-    else { # Generate the key, since it doesn't exist...
-        #$tmp = New-Object System.Collections.ArrayList
+    else {  # Generate the key, since it doesn't exist...
+        # $tmp = New-Object System.Collections.ArrayList
         for ($i=0; $i -lt 24; $i++) {
             $rand = Get-Random -Minimum 0 -Maximum 255
-            #$tmp.Add($rand) | Out-Null
+            # $tmp.Add($rand) | Out-Null
             $tmp += [byte]$rand
         }
         $Local:zz = @{}
         $Local:zz.Add("key", $tmp)
         $Local:zz | ConvertTo-Json | Out-File -FilePath $scCredentialsKeyFileName
-        if (Test-Path -Path $scCredentialsFileName) { # Remove the credentials (if they exist), since we had to generate the key (they're invalid)
+        if (Test-Path -Path $scCredentialsFileName) {  # Remove the credentials (if they exist), since we had to generate the key (they're invalid)
             Remove-Item -Path $scCredentialsFileName
         }
         $script:scCredentialsKey = $tmp
     }
 }
 
-function Output-Debug { #Simple output if we are debugging.
+
+function Output-Debug { # Simple output if we are debugging.
     param($req)
     if ($scriptDebug) {
         $Global:DebugPreference = "Continue"
@@ -72,6 +75,8 @@ function Output-Debug { #Simple output if we are debugging.
         $Global:DebugPreference = "SilentlyContinue"
     }
 }
+
+
 function SC-GetCredentials {
     # Do we even care about the external credentials? If not, use what's in the script.
     if ($scUseExternalCredentials -ne $true) {
@@ -105,15 +110,17 @@ function SC-GetCredentials {
                     $Local:tmp = $true
                 }
             }
-            catch [System.Management.Automation.RuntimeException] { #Highly likely the user hit cancel
+            catch [System.Management.Automation.RuntimeException] {  # Highly likely the user hit cancel
                 if ($Local:exitCount-- -lt 2) {
                     break
                 }
                 Write-Host No credentials detected... enter credentials... $Local:exitCount more to cancel...
             }
-        } #End credential capture loop
+        } # End credential capture loop
         if ($Script:scURI -eq "") {
-            $Script:scURI = Read-Host -Prompt "The SecurityCenter request.php URI is not defined... please enter the full URI to the request.php file."
+            $Script:scURI = Read-Host -Prompt "The SecurityCenter URI ... please enter the full URI to the SecurityCenter (w/o trailing slash)"
+            # Pre-make the base REST API URI
+            $Script:scURI = $Script:scURI + "/rest/"
         }
         $Local:expCreds = @{}
         <#if ($scriptDebug) {
@@ -127,77 +134,139 @@ function SC-GetCredentials {
         $Local:expCreds | ConvertTo-Json | Out-File -FilePath $scCredentialsFileName
     }
 }
-function SC-BuildInputString {
-    param($req);
-    $requestId = Get-Random -Minimum 10000 -Maximum 19999
 
-    # Generate the request string
-    $reqStr = "request_id=" + $requestId + "&module=" + $req.module + "&action=" + $req.action + "&token=" + $Script:scToken
-    
-    if ($req.input -ne "") {
-        $tmp = $req.input | ConvertTo-Json
-        $tmp = [System.Web.HttpUtility]::UrlEncode($tmp);
-        $reqStr = $reqStr + "&input=" + $tmp
+
+function SC-BuildQueryString {
+    param($queryJSON);
+
+    $reqStr = "?"
+    foreach ($Local:item in $queryJSON.GetEnumerator()) {
+        $reqStr += $Local:item.Name + '=' + [System.Web.HttpUtility]::UrlEncode($Local:item.Value) + '&'
     }
+    $reqStr = $reqStr.TrimEnd('&')
+    # Generate the request string
+    # $reqStr = [System.Web.HttpUtility]::UrlEncode(($reqStr))
+    
     return $reqStr;
 }
+
 
 <#
     $scJSONInput is hash table/object @{}
 #>
 function SC-Connect {
-    param([string]$scModule, [string]$scAction, $scJSONInput);
-    $request = @{"module" = $scModule;
-                 "action" = $scAction;
-                 "input" = $scJSONInput;}
-    #echo $request;
-    $requestString = SC-BuildInputString($request);
-    #echo ">>SENDING<<: " $requestString
+    param(
+        <# What are we trying to accomplish/get via the API? #>
+        [string]$scResource, 
+        <# Which HTTP Method are we using? #>
+        [ValidateSet("GET","POST","DELETE")]
+            [string]$scHTTPMethod,
+        $scQueryString, 
+        $scJSONInput
+    );
 
-    #Send it.
-    $Script:scResponse = (Invoke-RestMethod -Uri $scURI -Method POST -CertificateThumbprint $chosenCertThumb -Body $requestString -WebSession $scSession -TimeoutSec 180);
-    #Write-Host("Received: " + $Script:scResponse)
-    #Write-Host(">>RESPONSE CONTENTS<< ::: " + $Script:scResponse.response)
-    if ($Script:scToken.Equals("")) {
-        $Script:scToken = $Script:scResponse.response.token;
+    $json = $scJSONInput | ConvertTo-Json -Compress
+
+    # If we have a token, then the X-SecurityCenter header must be set
+    if ($script:scToken -eq "") { $http_headers=@{} }
+    else { $http_headers = @{"X-SecurityCenter"=$script:scToken} }
+
+    # Send it.
+    if ($scHTTPMethod -eq "POST") {
+        $Local:tmpUri = $scURI + $scResource
+        $script:scResponse = (Invoke-RestMethod -Uri $Local:tmpUri -Method POST -CertificateThumbprint $chosenCertThumb -Body $json -WebSession $scSession -TimeoutSec 180 -Headers $http_headers);
     }
-    
+    elseif ($scHTTPMethod -eq "GET") {
+        $Local:tmpUri = $scURI + $scResource + $scQueryString
+        $script:scResponse = (Invoke-RestMethod -Uri $Local:tmpUri -Method GET -CertificateThumbprint $chosenCertThumb -WebSession $scSession -TimeoutSec 180 -Headers $http_headers);
+    }
+    else {
+        $Local:tmpUri = $scURI + $scResource
+        $script:scResponse = (Invoke-RestMethod -Uri $Local:tmpUri -Method DELETE -CertificateThumbprint $chosenCertThumb -WebSession $scSession -TimeoutSec 180 -Headers $http_headers);
+    }
+    # Write-Host("Received: " + $Script:scResponse)
+    # Write-Host(">>RESPONSE CONTENTS<< ::: " + $Script:scResponse.response)
+    if ($scResource -eq "token") {
+        $script:scToken = $scResponse.response.token;
+    }
 }
+
+
 function SC-Login {
     $json = @{}
     $json.Add("username", $scCredentials.GetNetworkCredential().UserName)
     $json.Add("password", $scCredentials.GetNetworkCredential().Password)
-    SC-Connect "auth" "login" $json;
+    
+    SC-Connect -scResource "token" -scHTTPMethod POST -scJSONInput $json
 }
+
+
 function SC-Logout {
-    SC-Connect "auth" "logout"
+    SC-Connect -scResource "token" -scHTTPMethod DELETE
 }
-function SC-Get-IAVA {
-    $json = @{ "size" = "3000";
-               "type" = "active";
-               "sortField" = "id";
-               "filterField" = "xrefs:IAVA";
-               "filterString" = "A";};
-    SC-Connect "plugin" "init" $json;
-    $Script:scIAVAs = $Script:scResponse.response.plugins;
-}
-function SC-Get-IAVB {
-    $json = @{ "size" = "3000";
-               "type" = "active";
-               "sortField" = "id";
-               "filterField" = "xrefs:IAVB";
-               "filterString" = "B";};
-    SC-Connect "plugin" "init" $json;
-    $Script:scIAVBs = $Script:scResponse.response.plugins;
-}
-function SC-Get-IAVT {
-    $json = @{ "size" = "250";
-               "type" = "active";
-               "sortField" = "id";
-               "filterField" = "xrefs:IAVT";
-               "filterString" = "T";};
-    SC-Connect "plugin" "init" $json;
-    $Script:scIAVTs = $Script:scResponse.response.plugins;
+
+
+function SC-Get-Plugins() {
+    param(
+        [ValidateSet("copyright", "description", "exploitAvailable", "family", "id", "name",
+                     "patchPubDate", "patchModDate", "pluginPubDate", "pluginModDate",
+                     "sourceFile", "type", "version", "vulnPubDate", "xrefs")]
+        [string]$filterField = "",
+        [string]$xrefType = "",
+        [ValidateSet("ASC", "DESC")]
+          [string]$sortDirection = "DESC",
+        [ValidateSet("modifiedTime", "id", "name", "family", "type")]
+          [string]$sortField = "modifiedTime",
+        [ValidateSet("active", "all", "compliance", "custom", "lce", "notPassive")]
+          [string]$type = "all",
+        [ValidatePattern("^\d+")]
+          [string]$startOffset = 0,
+        [ValidatePattern("^\d+")]
+        [ValidateScript({$startOffset -le $_})]
+          [string]$endOffset = 50,
+        [ValidatePattern("^\d+")]
+          [int64]$secondsSinceEpoch = 0 ,
+        [ValidateSet("eq", "gt", "gte", "like", "lt", "lte")]
+          [string]$op = "",
+        [string]$value = "",
+        [string]$fields = "id,name,xrefs"
+    );
+    if ($xrefType -ne "") {
+        $computedFilterField = $filterField + ":" + $xrefType
+    }
+    <# More parameter validation... #>
+    if (($filterField -ne "type") -and ($filterField -ne "")) {
+        if ($op -eq "") {
+            Throw "The ``op`` and ``value`` parameters must be set when ``filterField`` is defined and any other value except `'type`'."
+        }
+    }
+    elseif (($filterField -eq "type") -and ($filterField -ne "")) {
+        if ($op -eq "") {
+            Throw "The ``op`` and ``value`` parameters must be set when ``filterField`` is defined and of the value `'type`'."
+        }
+        if ($value -notin @('active', 'passive', 'lce', 'compliance', 'custom')) {
+            Throw "The allowable values for the ``value`` parameter when ``filterField`` is set to `'type`' are: active, passive, lce, compliance, custom."
+        }
+    }
+
+    # Build the query dict
+    $dict = @{ "sortDirection" = $sortDirection;
+               "sortField" = $sortField;
+               "type" = $type;
+               "startOffset" = $startOffset;
+               "endOffset" = $endOffset;
+               "since" = $secondsSinceEpoch;
+               "fields" = $fields;
+             }
+    # If we are using any `filterField` settings, add the corresponding name/value pairs to the dict
+    if ($computedFilterField -ne "") {
+        $dict.Add("filterField", $computedFilterField)
+        $dict.Add("op",$op)
+        $dict.Add("value",$value)
+    }
+
+    SC-Connect -scResource "plugin" -scHTTPMethod GET -scQueryString (SC-BuildQueryString -queryJSON $dict)
+    return $Script:scResponse.response
 }
 
 
@@ -212,11 +281,11 @@ function Process-Xref-String {
             #Write-Host($z)
         if ($z.StartsWith($type)) {
             $iavTmp = $z.Trim(",")
-            $iavTmp = $iavTmp.Replace($type + ":","") <# Superfluous; Kill the IAVA: IAVB: prefix #>
+            $iavTmp = $iavTmp.Replace($type + ":","")  <# Superfluous; Kill the IAVA: IAVB: prefix #>
             #Write-Host($iavTmp)
             <### Plugin -> IAVM ID ###>
-			try {$Script:htTmpPluginToIAVM.Add($PluginID, $iavTmp)} <# Key doesn't exist yet, so add it in now #>
-            catch [System.Management.Automation.MethodInvocationException] { <# Key exists, so append the pluginID #>
+			try {$Script:htTmpPluginToIAVM.Add($PluginID, $iavTmp)}  <# Key doesn't exist yet, so add it in now #>
+            catch [System.Management.Automation.MethodInvocationException] {  <# Key exists, so append the pluginID #>
                 #Write-Host(">>> IAVM ID <<<" + $iavTmp)
                 $qq = $Script:htTmpPluginToIAVM.Get_Item($PluginID)
                 $qq = $qq + ", " + $iavTmp
@@ -248,18 +317,18 @@ if ($chosenCertThumb -eq "") {  # Only execute if we don't have a thumbprint fro
 }
 
 <# Gotta log in before anything! #>
-Write-Host("You may be prompted for your PIN! If so, kindly provide it to the dialog to permit authentication. Thanks!") -ForegroundColor Green
+Write-Host("You may be prompted for your PIN! If so, would you kindly provide it to the dialog to permit authentication? Thanks!") -ForegroundColor Green
 Write-Host("Logging in; wait...")
 SC-Login;
-#Write-Host("We just got a /token/. We just got a \token\. We just got a |token|, I wonder what it is‽ ::: " + $scToken);
+# Write-Host("We just got a /token/. We just got a \token\. We just got a |token|, I wonder what it is‽ ::: " + $scToken);
 
 <# GET THOSE IAVMS! CHAAAARGE! #>
 Write-Host("Acquiring IAVM IDs; wait...")
-SC-Get-IAVA;
+$Script:scIAVAs = SC-Get-Plugins -filterField xrefs -xrefType "IAVA" -endOffset 4000 -type active -op like -value "-A-"
 Write-Host("Acquiring some additional IAVM IDs; wait some more...")
-SC-Get-IAVB;
+$Script:scIAVBs = SC-Get-Plugins -filterField xrefs -xrefType "IAVB" -endOffset 4000 -type active -op like -value "-B-"
 Write-Host("Searching for any lost IAVM IDs; wait some more...")
-SC-Get-IAVT;
+$Script:scIAVTs = SC-Get-Plugins -filterField xrefs -xrefType "IAVT" -endOffset 4000 -type active -op like -value "-T-"
 
 <# Done with SC at this point; cleanly close out the session #>
 Write-Host("Logging out; wait...")
