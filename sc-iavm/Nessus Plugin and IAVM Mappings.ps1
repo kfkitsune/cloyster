@@ -16,13 +16,13 @@ catch [System.IO.FileNotFoundException] {
     exit
 }      ### End module import block ###
 
-$scURI = ""; #Optional; Use if not using external cred/conf file.
+$scURI = "";  # Optional; Use if not using external cred/conf file.
 $chosenCertThumb = "";
 if ($paramPKIThumbprint) { [string]$chosenCertThumb = $paramPKIThumbprint }
 $scToken = "";
 $scSession = New-Object Microsoft.PowerShell.Commands.WebRequestSession;
-$scUsername = ""; #Optional; Use if not using external cred/conf file.
-$scPassword = ""; #Optional; Use if not using external cred/conf file.
+$scUsername = "";  # Optional; Use if not using external cred/conf file.
+$scPassword = "";  # Optional; Use if not using external cred/conf file.
 $scResponse = "";
 $scIAVAs = @{};
 $scIAVBs = @{};
@@ -33,7 +33,7 @@ $outputFileNamePlugToIAV = "Nessus Plugin to IAVM Mapping.csv"
 $outputFileNameIAVToPlug = "IAVM to Nessus Plugin Mapping.csv"
 $scCredentials = New-Object System.Management.Automation.PSCredential -ArgumentList "foo", (ConvertTo-SecureString "foo" -AsPlainText -Force)
 $scCredentialsFileName = ".\scCredentials.conf"
-$scCredentialsKey = @(); #If changed, scCredentials.conf is invalid and must be regenerated. Can be read from conf file. 24 bytes.
+$scCredentialsKey = @();  # If changed, scCredentials.conf is invalid and must be regenerated. Can be read from conf file. 24 bytes.
 $scCredentialsKeyFileName = ".\pluginIAVMMapping.conf"
 $scUseExternalCredentials = $true;
 $externalConfig = $true
@@ -49,17 +49,17 @@ function Read-ConfigFile {
         }
         $script:scCredentialsKey = $tmp
     }
-    else { # Generate the key, since it doesn't exist...
-        #$tmp = New-Object System.Collections.ArrayList
+    else {  # Generate the key, since it doesn't exist...
+        # $tmp = New-Object System.Collections.ArrayList
         for ($i=0; $i -lt 24; $i++) {
             $rand = Get-Random -Minimum 0 -Maximum 255
-            #$tmp.Add($rand) | Out-Null
+            # $tmp.Add($rand) | Out-Null
             $tmp += [byte]$rand
         }
         $Local:zz = @{}
         $Local:zz.Add("key", $tmp)
         $Local:zz | ConvertTo-Json | Out-File -FilePath $scCredentialsKeyFileName
-        if (Test-Path -Path $scCredentialsFileName) { # Remove the credentials (if they exist), since we had to generate the key (they're invalid)
+        if (Test-Path -Path $scCredentialsFileName) {  # Remove the credentials (if they exist), since we had to generate the key (they're invalid)
             Remove-Item -Path $scCredentialsFileName
         }
         $script:scCredentialsKey = $tmp
@@ -67,7 +67,7 @@ function Read-ConfigFile {
 }
 
 
-function Output-Debug { #Simple output if we are debugging.
+function Output-Debug { # Simple output if we are debugging.
     param($req)
     if ($scriptDebug) {
         $Global:DebugPreference = "Continue"
@@ -110,13 +110,13 @@ function SC-GetCredentials {
                     $Local:tmp = $true
                 }
             }
-            catch [System.Management.Automation.RuntimeException] { #Highly likely the user hit cancel
+            catch [System.Management.Automation.RuntimeException] {  # Highly likely the user hit cancel
                 if ($Local:exitCount-- -lt 2) {
                     break
                 }
                 Write-Host No credentials detected... enter credentials... $Local:exitCount more to cancel...
             }
-        } #End credential capture loop
+        } # End credential capture loop
         if ($Script:scURI -eq "") {
             $Script:scURI = Read-Host -Prompt "The SecurityCenter URI ... please enter the full URI to the SecurityCenter (w/o trailing slash)"
             # Pre-make the base REST API URI
@@ -145,7 +145,7 @@ function SC-BuildQueryString {
     }
     $reqStr = $reqStr.TrimEnd('&')
     # Generate the request string
-    #$reqStr = [System.Web.HttpUtility]::UrlEncode(($reqStr))
+    # $reqStr = [System.Web.HttpUtility]::UrlEncode(($reqStr))
     
     return $reqStr;
 }
@@ -171,7 +171,7 @@ function SC-Connect {
     if ($script:scToken -eq "") { $http_headers=@{} }
     else { $http_headers = @{"X-SecurityCenter"=$script:scToken} }
 
-    #Send it.
+    # Send it.
     if ($scHTTPMethod -eq "POST") {
         $Local:tmpUri = $scURI + $scResource
         $script:scResponse = (Invoke-RestMethod -Uri $Local:tmpUri -Method POST -CertificateThumbprint $chosenCertThumb -Body $json -WebSession $scSession -TimeoutSec 180 -Headers $http_headers);
@@ -184,8 +184,8 @@ function SC-Connect {
         $Local:tmpUri = $scURI + $scResource
         $script:scResponse = (Invoke-RestMethod -Uri $Local:tmpUri -Method DELETE -CertificateThumbprint $chosenCertThumb -WebSession $scSession -TimeoutSec 180 -Headers $http_headers);
     }
-    Write-Host("Received: " + $Script:scResponse)
-    Write-Host(">>RESPONSE CONTENTS<< ::: " + $Script:scResponse.response)
+    # Write-Host("Received: " + $Script:scResponse)
+    # Write-Host(">>RESPONSE CONTENTS<< ::: " + $Script:scResponse.response)
     if ($scResource -eq "token") {
         $script:scToken = $scResponse.response.token;
     }
@@ -269,44 +269,6 @@ function SC-Get-Plugins() {
     return $Script:scResponse.response
 }
 
-function SC-Get-IAVA {
-    $json = @{ "endOffset" = "4000";
-               "type" = "active";
-               "sortField" = "id";
-               "filterField" = "xrefs:IAVA";
-               "value" = "-A-";
-               "op" = "like";
-               "fields" = "id,name,xrefs";};
-    SC-Connect -scResource "plugin" -scHTTPMethod GET -scQueryString (SC-BuildQueryString -queryJSON $json)
-    $Script:scIAVAs = $Script:scResponse.response;
-}
-
-
-function SC-Get-IAVB {
-    $json = @{ "endOffset" = "4000";
-               "type" = "active";
-               "sortField" = "id";
-               "filterField" = "xrefs:IAVB";
-               "value" = "-B-";
-               "op" = "like";
-               "fields" = "id,name,xrefs";};
-    SC-Connect -scResource "plugin" -scHTTPMethod GET -scQueryString (SC-BuildQueryString -queryJSON $json)
-    $Script:scIAVBs = $Script:scResponse.response;
-}
-
-
-function SC-Get-IAVT {
-    $json = @{ "endOffset" = "250";
-               "type" = "active";
-               "sortField" = "id";
-               "filterField" = "xrefs:IAVT";
-               "value" = "-T-";
-               "op" = "like";
-               "fields" = "id,name,xrefs";};
-    SC-Connect -scResource "plugin" -scHTTPMethod GET -scQueryString (SC-BuildQueryString -queryJSON $json)
-    $Script:scIAVTs = $Script:scResponse.response;
-}
-
 
 function Process-Xref-String {
     param([string]$Type, 
@@ -319,11 +281,11 @@ function Process-Xref-String {
             #Write-Host($z)
         if ($z.StartsWith($type)) {
             $iavTmp = $z.Trim(",")
-            $iavTmp = $iavTmp.Replace($type + ":","") <# Superfluous; Kill the IAVA: IAVB: prefix #>
+            $iavTmp = $iavTmp.Replace($type + ":","")  <# Superfluous; Kill the IAVA: IAVB: prefix #>
             #Write-Host($iavTmp)
             <### Plugin -> IAVM ID ###>
-			try {$Script:htTmpPluginToIAVM.Add($PluginID, $iavTmp)} <# Key doesn't exist yet, so add it in now #>
-            catch [System.Management.Automation.MethodInvocationException] { <# Key exists, so append the pluginID #>
+			try {$Script:htTmpPluginToIAVM.Add($PluginID, $iavTmp)}  <# Key doesn't exist yet, so add it in now #>
+            catch [System.Management.Automation.MethodInvocationException] {  <# Key exists, so append the pluginID #>
                 #Write-Host(">>> IAVM ID <<<" + $iavTmp)
                 $qq = $Script:htTmpPluginToIAVM.Get_Item($PluginID)
                 $qq = $qq + ", " + $iavTmp
@@ -363,13 +325,10 @@ Write-Host("We just got a /token/. We just got a \token\. We just got a |token|,
 <# GET THOSE IAVMS! CHAAAARGE! #>
 Write-Host("Acquiring IAVM IDs; wait...")
 $Script:scIAVAs = SC-Get-Plugins -filterField xrefs -xrefType "IAVA" -endOffset 4000 -type active -op like -value "-A-"
-#SC-Get-IAVA;
 Write-Host("Acquiring some additional IAVM IDs; wait some more...")
 $Script:scIAVBs = SC-Get-Plugins -filterField xrefs -xrefType "IAVB" -endOffset 4000 -type active -op like -value "-B-"
-#SC-Get-IAVB;
 Write-Host("Searching for any lost IAVM IDs; wait some more...")
 $Script:scIAVTs = SC-Get-Plugins -filterField xrefs -xrefType "IAVT" -endOffset 4000 -type active -op like -value "-T-"
-#SC-Get-IAVT;
 
 <# Done with SC at this point; cleanly close out the session #>
 Write-Host("Logging out; wait...")
