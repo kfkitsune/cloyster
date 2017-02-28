@@ -39,6 +39,7 @@ $scUseExternalCredentials = $true;
 $externalConfig = $true
 $scriptDebug = $false
 
+
 function Read-ConfigFile {
     [byte[]]$tmp = @()  # Storage for the key
     if ($externalConfig -and (Test-Path -Path $scCredentialsKeyFileName)) {
@@ -65,6 +66,7 @@ function Read-ConfigFile {
     }
 }
 
+
 function Output-Debug { #Simple output if we are debugging.
     param($req)
     if ($scriptDebug) {
@@ -73,6 +75,8 @@ function Output-Debug { #Simple output if we are debugging.
         $Global:DebugPreference = "SilentlyContinue"
     }
 }
+
+
 function SC-GetCredentials {
     # Do we even care about the external credentials? If not, use what's in the script.
     if ($scUseExternalCredentials -ne $true) {
@@ -130,12 +134,14 @@ function SC-GetCredentials {
         $Local:expCreds | ConvertTo-Json | Out-File -FilePath $scCredentialsFileName
     }
 }
+
+
 function SC-BuildQueryString {
     param($queryJSON);
 
     $reqStr = "?"
     foreach ($Local:item in $queryJSON.GetEnumerator()) {
-        $reqStr += $Local:item.Name + '=' + $Local:item.Value + '&'
+        $reqStr += $Local:item.Name + '=' + [System.Web.HttpUtility]::UrlEncode($Local:item.Value) + '&'
     }
     $reqStr = $reqStr.TrimEnd('&')
     # Generate the request string
@@ -143,6 +149,7 @@ function SC-BuildQueryString {
     
     return $reqStr;
 }
+
 
 <#
     $scJSONInput is hash table/object @{}
@@ -157,71 +164,147 @@ function SC-Connect {
         $scQueryString, 
         $scJSONInput
     );
-    <#$request = @{"module" = $scModule;
-                 "action" = $scAction;
-                 "input" = $scJSONInput;}#>
-    #echo $request;
-    #$requestString = SC-BuildInputString($request);
-    #echo ">>SENDING<<: " $requestString
+
+    $json = $scJSONInput | ConvertTo-Json -Compress
+
+    # If we have a token, then the X-SecurityCenter header must be set
+    if ($script:scToken -eq "") { $http_headers=@{} }
+    else { $http_headers = @{"X-SecurityCenter"=$script:scToken} }
 
     #Send it.
     if ($scHTTPMethod -eq "POST") {
         $Local:tmpUri = $scURI + $scResource
-        $Script:scResponse = (Invoke-RestMethod -Uri $Local:tmpUri -Method POST -CertificateThumbprint $chosenCertThumb -Body $scJSONInput -WebSession $scSession -TimeoutSec 180 -Headers @{"X-SecurityCenter"=$Script:scToken});
+        $script:scResponse = (Invoke-RestMethod -Uri $Local:tmpUri -Method POST -CertificateThumbprint $chosenCertThumb -Body $json -WebSession $scSession -TimeoutSec 180 -Headers $http_headers);
     }
     elseif ($scHTTPMethod -eq "GET") {
         $Local:tmpUri = $scURI + $scResource + $scQueryString
-        $Script:scResponse = (Invoke-RestMethod -Uri $Local:tmpUri -Method GET -CertificateThumbprint $chosenCertThumb -WebSession $scSession -TimeoutSec 180 -Headers @{"X-SecurityCenter"=$Script:scToken});
+        $script:scResponse = (Invoke-RestMethod -Uri $Local:tmpUri -Method GET -CertificateThumbprint $chosenCertThumb -WebSession $scSession -TimeoutSec 180 -Headers $http_headers);
     }
     else {
         $Local:tmpUri = $scURI + $scResource
-        $Script:scResponse = (Invoke-RestMethod -Uri $Local:tmpUri -Method DELETE -CertificateThumbprint $chosenCertThumb -WebSession $scSession -TimeoutSec 180 -Headers @{"X-SecurityCenter"=$Script:scToken});
+        $script:scResponse = (Invoke-RestMethod -Uri $Local:tmpUri -Method DELETE -CertificateThumbprint $chosenCertThumb -WebSession $scSession -TimeoutSec 180 -Headers $http_headers);
     }
-    #Write-Host("Received: " + $Script:scResponse)
-    #Write-Host(">>RESPONSE CONTENTS<< ::: " + $Script:scResponse.response)
-    if ($Script:scToken.Equals("")) {
-        $Script:scToken = $Script:scResponse.response.token;
+    Write-Host("Received: " + $Script:scResponse)
+    Write-Host(">>RESPONSE CONTENTS<< ::: " + $Script:scResponse.response)
+    if ($scResource -eq "token") {
+        $script:scToken = $scResponse.response.token;
     }
-    
 }
+
+
 function SC-Login {
     $json = @{}
     $json.Add("username", $scCredentials.GetNetworkCredential().UserName)
     $json.Add("password", $scCredentials.GetNetworkCredential().Password)
+    
     SC-Connect -scResource "token" -scHTTPMethod POST -scJSONInput $json
 }
+
+
 function SC-Logout {
     SC-Connect -scResource "token" -scHTTPMethod DELETE
 }
+
+
+function SC-Get-Plugins() {
+    param(
+        [ValidateSet("copyright", "description", "exploitAvailable", "family", "id", "name",
+                     "patchPubDate", "patchModDate", "pluginPubDate", "pluginModDate",
+                     "sourceFile", "type", "version", "vulnPubDate", "xrefs")]
+        [string]$filterField = "",
+        [string]$xrefType = "",
+        [ValidateSet("ASC", "DESC")]
+          [string]$sortDirection = "DESC",
+        [ValidateSet("modifiedTime", "id", "name", "family", "type")]
+          [string]$sortField = "modifiedTime",
+        [ValidateSet("active", "all", "compliance", "custom", "lce", "notPassive")]
+          [string]$type = "all",
+        [ValidatePattern("^\d+")]
+          [string]$startOffset = 0,
+        [ValidatePattern("^\d+")]
+        [ValidateScript({$startOffset -le $_})]
+          [string]$endOffset = 50,
+        [ValidatePattern("^\d+")]
+          [int64]$secondsSinceEpoch = 0 ,
+        [ValidateSet("eq", "gt", "gte", "like", "lt", "lte")]
+          [string]$op = "",
+        [string]$value = "",
+        [string]$fields = "id,name,xrefs"
+    );
+    if ($xrefType -ne "") {
+        $computedFilterField = $filterField + ":" + $xrefType
+    }
+    <# More parameter validation... #>
+    if (($filterField -ne "type") -and ($filterField -ne "")) {
+        if ($op -eq "") {
+            Throw "The ``op`` and ``value`` parameters must be set when ``filterField`` is defined and any other value except `'type`'."
+        }
+    }
+    elseif (($filterField -eq "type") -and ($filterField -ne "")) {
+        if ($op -eq "") {
+            Throw "The ``op`` and ``value`` parameters must be set when ``filterField`` is defined and of the value `'type`'."
+        }
+        if ($value -notin @('active', 'passive', 'lce', 'compliance', 'custom')) {
+            Throw "The allowable values for the ``value`` parameter when ``filterField`` is set to `'type`' are: active, passive, lce, compliance, custom."
+        }
+    }
+
+    # Build the query dict
+    $dict = @{ "sortDirection" = $sortDirection;
+               "sortField" = $sortField;
+               "type" = $type;
+               "startOffset" = $startOffset;
+               "endOffset" = $endOffset;
+               "since" = $secondsSinceEpoch;
+               "fields" = $fields;
+             }
+    # If we are using any `filterField` settings, add the corresponding name/value pairs to the dict
+    if ($computedFilterField -ne "") {
+        $dict.Add("filterField", $computedFilterField)
+        $dict.Add("op",$op)
+        $dict.Add("value",$value)
+    }
+
+    SC-Connect -scResource "plugin" -scHTTPMethod GET -scQueryString (SC-BuildQueryString -queryJSON $dict)
+    return $Script:scResponse.response
+}
+
 function SC-Get-IAVA {
-    $json = @{ "size" = "3000";
+    $json = @{ "endOffset" = "4000";
                "type" = "active";
                "sortField" = "id";
                "filterField" = "xrefs:IAVA";
-               "filterString" = "A";
+               "value" = "-A-";
+               "op" = "like";
                "fields" = "id,name,xrefs";};
     SC-Connect -scResource "plugin" -scHTTPMethod GET -scQueryString (SC-BuildQueryString -queryJSON $json)
-    $Script:scIAVAs = $Script:scResponse.response.plugins;
+    $Script:scIAVAs = $Script:scResponse.response;
 }
+
+
 function SC-Get-IAVB {
-    $json = @{ "size" = "3000";
+    $json = @{ "endOffset" = "4000";
                "type" = "active";
                "sortField" = "id";
                "filterField" = "xrefs:IAVB";
-               "filterString" = "B";
+               "value" = "-B-";
+               "op" = "like";
                "fields" = "id,name,xrefs";};
     SC-Connect -scResource "plugin" -scHTTPMethod GET -scQueryString (SC-BuildQueryString -queryJSON $json)
-    $Script:scIAVBs = $Script:scResponse.response.plugins;
+    $Script:scIAVBs = $Script:scResponse.response;
 }
+
+
 function SC-Get-IAVT {
-    $json = @{ "size" = "250";
+    $json = @{ "endOffset" = "250";
                "type" = "active";
                "sortField" = "id";
                "filterField" = "xrefs:IAVT";
-               "filterString" = "T";
+               "value" = "-T-";
+               "op" = "like";
                "fields" = "id,name,xrefs";};
     SC-Connect -scResource "plugin" -scHTTPMethod GET -scQueryString (SC-BuildQueryString -queryJSON $json)
-    $Script:scIAVTs = $Script:scResponse.response.plugins;
+    $Script:scIAVTs = $Script:scResponse.response;
 }
 
 
@@ -275,15 +358,18 @@ if ($chosenCertThumb -eq "") {  # Only execute if we don't have a thumbprint fro
 Write-Host("You may be prompted for your PIN! If so, would you kindly provide it to the dialog to permit authentication? Thanks!") -ForegroundColor Green
 Write-Host("Logging in; wait...")
 SC-Login;
-#Write-Host("We just got a /token/. We just got a \token\. We just got a |token|, I wonder what it is‽ ::: " + $scToken);
+Write-Host("We just got a /token/. We just got a \token\. We just got a |token|, I wonder what it is‽ ::: " + $scToken);
 
 <# GET THOSE IAVMS! CHAAAARGE! #>
 Write-Host("Acquiring IAVM IDs; wait...")
-SC-Get-IAVA;
+$Script:scIAVAs = SC-Get-Plugins -filterField xrefs -xrefType "IAVA" -endOffset 4000 -type active -op like -value "-A-"
+#SC-Get-IAVA;
 Write-Host("Acquiring some additional IAVM IDs; wait some more...")
-SC-Get-IAVB;
+$Script:scIAVBs = SC-Get-Plugins -filterField xrefs -xrefType "IAVB" -endOffset 4000 -type active -op like -value "-B-"
+#SC-Get-IAVB;
 Write-Host("Searching for any lost IAVM IDs; wait some more...")
-SC-Get-IAVT;
+$Script:scIAVTs = SC-Get-Plugins -filterField xrefs -xrefType "IAVT" -endOffset 4000 -type active -op like -value "-T-"
+#SC-Get-IAVT;
 
 <# Done with SC at this point; cleanly close out the session #>
 Write-Host("Logging out; wait...")
