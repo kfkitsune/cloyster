@@ -192,12 +192,31 @@ function SC-Connect {
 }
 
 
-function SC-Login {
+function SC-Authenticate() {
+    # First try authenticating via PKI
+    SC-Authenticate-PKI
+    # If that doesn't work, try authenticating via username/password
+    if ($script:scToken -eq "") {
+        SC-Authenticate-UsernamePassword
+    }
+}
+
+
+function SC-Authenticate-PKI() {
+    SC-Connect -scResource "system" -scHTTPMethod GET
+    if (Get-Member -InputObject $Script:scResponse.response -Name "token" -MemberType Properties) {
+        $Script:scToken = $Script:scResponse.response.token
+    }
+}
+
+
+function SC-Authenticate-UsernamePassword() {
     $json = @{}
     $json.Add("username", $scCredentials.GetNetworkCredential().UserName)
     $json.Add("password", $scCredentials.GetNetworkCredential().Password)
-    
     SC-Connect -scResource "token" -scHTTPMethod POST -scJSONInput $json
+
+    $script:scToken = $script:scResponse.response.token
 }
 
 
