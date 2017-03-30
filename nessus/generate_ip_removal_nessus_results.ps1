@@ -1,7 +1,10 @@
 <#
 Using a template .nessus file, generates a .nessus file which purges passed in IPs from a
-SecurityCenter repository upon import. For implementation simplicity, the source IP
-text file must only have a single IP per line.
+SecurityCenter repository upon import. IP information must be in one of the following
+formats:
+- Raw IP: 1.2.3.4
+- CIDR Range: 192.168.1.0/24
+- IP To-From Range: 10.10.10.0-10.10.10.20
 #>
 
 Function Get-FileName($initialDirectory) {
@@ -22,6 +25,48 @@ Function Get-FileName($initialDirectory) {
     $OpenFileDialog.filename
 }
 
+function Get-IPRange {
+<#
+    Get IP addresses in a range
+
+    Example usage:
+    - Get-IPrange -start 192.168.8.2 -end 192.168.8.20
+    - Get-IPrange -ip 192.168.8.3 -cidr 24
+    Reference: https://gallery.technet.microsoft.com/scriptcenter/List-the-IP-addresses-in-a-60c5bb6b
+#>
+    param (
+        [string]$start,
+        [string]$end,
+        [string]$ip,
+        [string]$mask,
+        [int]$cidr
+    )
+    function IP-toINT64 () {
+        param ($ip)
+        $octets = $ip.split(".")
+        return [int64]([int64]$octets[0]*16777216 +[int64]$octets[1]*65536 +[int64]$octets[2]*256 +[int64]$octets[3])
+    }
+    function INT64-toIP() {
+        param ([int64]$int)
+        return (([math]::truncate($int/16777216)).tostring()+"."+([math]::truncate(($int%16777216)/65536)).tostring()+"."+([math]::truncate(($int%65536)/256)).tostring()+"."+([math]::truncate($int%256)).tostring() )
+    }
+    if ($ip) {$ipaddr = [Net.IPAddress]::Parse($ip)}
+    if ($cidr) {$maskaddr = [Net.IPAddress]::Parse((INT64-toIP -int ([convert]::ToInt64(("1"*$cidr+"0"*(32-$cidr)),2)))) }
+    if ($mask) {$maskaddr = [Net.IPAddress]::Parse($mask)}
+    if ($ip) {$networkaddr = new-object net.ipaddress ($maskaddr.address -band $ipaddr.address)}
+    if ($ip) {$broadcastaddr = new-object net.ipaddress (([system.net.ipaddress]::parse("255.255.255.255").address -bxor $maskaddr.address -bor $networkaddr.address))}
+    if ($ip) {
+        $startaddr = IP-toINT64 -ip $networkaddr.ipaddresstostring
+        $endaddr = IP-toINT64 -ip $broadcastaddr.ipaddresstostring
+    }
+    else {
+        $startaddr = IP-toINT64 -ip $start
+        $endaddr = IP-toINT64 -ip $end
+    }
+    for ($i = $startaddr; $i -le $endaddr; $i++) {
+        INT64-toIP -int $i
+    }
+}
 
 # Get the XML data...
 Write-Host -ForegroundColor Yellow "Give me the removeip.nessus template..."
@@ -39,9 +84,32 @@ $xml_node = $nessusFile.NessusClientData_v2.Policy.Preferences.ServerPreferences
 #>
 $concatenated_ips = ""
 foreach ($line in $target_ip_addrs) {
-    $concatenated_ips += $line + ","
+    if ([System.Net.IPAddress]::TryParse($line, [ref]'0.0.0.0')) {
+        # Is the line itself an IP?
+        $concatenated_ips += $line + ","
+    }
+    elseif ($line.Contains('/')) {
+        # Maybe it is a CIDR range!?
+        $cidr_split = $line.Split('/')
+        $result = Get-IPRange -ip $cidr_split[0] -cidr $cidr_split[1]
+        foreach ($entry in $result) {
+            $concatenated_ips += $entry + ","
+        }
+    }
+    elseif ($line.Contains('-')) {
+        # Or even a range?!
+        $range_split = $line.Split('-')
+        $result = Get-IPRange -start $range_split[0] -end $range_split[1]
+        foreach ($entry in $result) {
+            $concatenated_ips += $entry + ","
+        }
+    }
+    else {
+        # WHARRGARBL! No one here but us kittens. Skip this $line.
+    }
 }
 $concatenated_ips = $concatenated_ips.TrimEnd(',')
+$target_ip_addrs = $concatenated_ips.Split(',')
 $xml_node.value = $concatenated_ips
 
 # Store the XML location/node of our template
