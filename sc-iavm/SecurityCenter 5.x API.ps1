@@ -1,5 +1,5 @@
 <#
-    Just an API shell for SecurityCenter v5.x, ya'know?
+    Just an API shell for SecurityCenter, ya'know?
 #>
 
 try {  ### Begin module import block ###
@@ -151,7 +151,7 @@ function SC-Connect {
         [ValidateSet("auditFile", "config", "credential", "currentUser", "currentOrganization", "feed", "file/upload",
         "group", "ipInfo", "lce", "lce/eventTypes", "scanner", "organization", "passivescanner", "plugin", "pluginFamily",
         "query", "repository", "role", "scan", "policy", "scanResult", "zone", "status", "system", "ticket", "token",
-        "reportDefinition")]
+        "reportDefinition", "scanResult/import")]
           [string]$scResource,
         [ValidatePattern("^\d+")]
           [int]$scResourceID,
@@ -159,7 +159,9 @@ function SC-Connect {
         [ValidateSet("GET","POST","DELETE")]
           [string]$scHTTPMethod,
         $scQueryString, 
-        $scJSONInput
+        $scJSONInput,
+        $scAdditionalHeadersDict = @{},
+        $scRawRequestPayload
     );
     <#
         Undocumented scResource values:
@@ -170,13 +172,25 @@ function SC-Connect {
 
     # If we have a token, then the X-SecurityCenter header must be set
     if ($script:scToken -eq "") { $http_headers=@{} }
-    else { $http_headers = @{"X-SecurityCenter"=$script:scToken} }
+    else {
+        $http_headers = @{"X-SecurityCenter"=$script:scToken}
+        # Do we need to add any additional headers?
+        if ($scAdditionalHeadersDict.Count -gt 0) {
+            $http_headers += $scAdditionalHeadersDict
+        }
+    }
 
     # Send it.
     if ($scHTTPMethod -eq "POST") {
         if ($scResourceID) { $Local:tmpUri = $scURI + $scResource + '/' + $scResourceID }
-        else { $Local:tmpUri = $scURI + $scResource }
-        $script:scResponse = (Invoke-RestMethod -Uri $Local:tmpUri -Method POST -CertificateThumbprint $chosenCertThumb -Body $json -WebSession $scSession -TimeoutSec 180 -Headers $http_headers);
+        else { $Local:tmpUri = $scURI + $scResource
+            if ($scResource -eq "file/upload") {
+                $script:scResponse = (Invoke-RestMethod -Verbose -Uri $Local:tmpUri -Method POST -CertificateThumbprint $chosenCertThumb -Body $scRawRequestPayload -WebSession $scSession -TimeoutSec 180 -Headers $http_headers);
+            }
+            else {
+                $script:scResponse = (Invoke-RestMethod -Uri $Local:tmpUri -Method POST -CertificateThumbprint $chosenCertThumb -Body $json -WebSession $scSession -TimeoutSec 180 -Headers $http_headers);
+            }
+        }
     }
     elseif ($scHTTPMethod -eq "GET") {
         if ($scResourceID) { $Local:tmpUri = $scURI + $scResource + '/' + $scResourceID + $scQueryString }
@@ -338,6 +352,7 @@ function SC-Get-Scans() {
     SC-Connect -scResource scan -scHTTPMethod GET -scQueryString (SC-BuildQueryString $dict)
 }
 
+
 function SC-Get-ReportDefinition() {
     <#
         An undocumented API endpoint.
@@ -353,7 +368,119 @@ function SC-Get-ReportDefinition() {
 }
 
 
-Read-ConfigFile;
-SC-GetCredentials;
+function SC-Get-Repositories() {
+    <#
+        https://support.tenable.com/support-center/cerberus-support-center/includes/widgets/sc_api/Repository.html
+    #>
+    param (
+        #`id` always comes back
+        [switch]$name,
+        [switch]$description,
+        [ValidateSet("All","Local","Remote","Offline")]
+          [string]$type,
+        [switch]$dataFormat,
+        [switch]$vulnCount,
+        [switch]$remoteID,
+        [switch]$remoteIP,
+        [switch]$running,
+        [switch]$downloadFormat,
+        [switch]$lastSyncTime,
+        [switch]$lastVulnUpdate,
+        [switch]$createdTime,
+        [switch]$modifiedTime,
+        [switch]$transfer,
+        [switch]$typeFields,
+        [switch]$remoteSchedule
+    )
+    # Build the query dict
+    $dict = @{
+        "fields" = "id";
+    }
+    # Set all the fields, if they were requested to be set...
+    if ($name) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",name")}
+    if ($description) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",description")}
+    if ($type) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",type")}
+    if ($dataFormat) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",dataFormat")}
+    if ($vulnCount) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",vulnCount")}
+    if ($remoteID) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",remoteID")}
+    if ($remoteIP) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",remoteIP")}
+    if ($running) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",running")}
+    if ($downloadFormat) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",downloadFormat")}
+    if ($lastSyncTime) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",lastSyncTime")}
+    if ($lastVulnUpdate) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",lastVulnUpdate")}
+    if ($createdTime) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",createdTime")}
+    if ($modifiedTime) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",modifiedTime")}
+    if ($transfer) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",transfer")}
+    if ($typeFields) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",typeFields")}
+    if ($remoteSchedule) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",remoteSchedule")}
+
+    SC-Connect -scResource repository -scHTTPMethod GET -scQueryString (SC-BuildQueryString -queryJSON $dict)
+}
 
 
+function SC-Upload-File() {
+    <#
+        A semi-loosely documented endpoint. It's documented, just not for all use-cases.
+        https://support.tenable.com/support-center/cerberus-support-center/includes/widgets/sc_api/File.html
+    #>
+    param(
+        $filePath
+    )
+    Write-Host $filePath
+    # Read in the entire file
+    $fileBin = [IO.File]::ReadAllBytes($filePath)
+    # Safely encode the file for transfer
+    $fileEnc = [System.Text.Encoding]::GetEncoding("ISO-8859-1").GetString($fileBin)
+    # Make a boundary to deliniate where the file information is
+    $boundary = [System.Guid]::NewGuid().ToString()
+    $LF = "`r`n"
+    $fileName = (Split-Path -Leaf $filePath)
+    # Manually build the request payload, doing something like ``@(foo,bar,baz) -join $LF`` adds spaces in spots and mucks it up.
+    $uploadBody = "----------$boundary" + $LF
+    $uploadBody += "Content-Disposition: form-data; name=`"Filedata`"; filename=`"$fileName`"$LF"
+    $uploadBody += "Content-Type: application/octet-stream$LF$LF"
+    $uploadBody += $fileEnc + $LF
+    $uploadBody += "----------$boundary--"
+    # Add in the additional headers required for this API endpoint
+    $additionalHeaders = @{"Content-Type"="multipart/form-data; boundary=--------$boundary"}
+    SC-Connect -scResource file/upload -scHTTPMethod POST -scAdditionalHeadersDict $additionalHeaders -scRawRequestPayload $uploadBody
+    # The name of the file on the SecurityCenter server to be used for other actions (such as importing)
+    return $script:scResponse.response.filename
+}
+
+
+function SC-Import-Nessus-Results() {
+    <#
+        An undocumented endpoint for importing results from an uploaded Nessus results file.
+
+        Requires the addition of the "Content-Type:application/json" header.
+    #>
+    param(
+        $generatedFilename,
+        [ValidatePattern("^\d+")]
+          [int]$repositoryID = 7
+    )
+    # Build the query according to what was observed in-browser
+    $dict = @{
+        "classifyMitigatedAge" = 0;
+        "context" = "";
+        "createdTime" = 0;
+        "description" = "";
+        "dhcpTracking" = "true";
+        "filename" = "$generatedFilename";
+        "groups" = @();
+        "modifiedTime" = 0;
+        "name" = "";
+        "repository" = @{"id" = $repositoryID};
+        "rolloverType" = "template";
+        "scanningVirtualHosts" = "false";
+        "tags" = "";
+        "timeoutAction" = "import";
+    }
+    # Send the import request
+    Write-Host ($dict | ConvertTo-Json)
+    SC-Connect -scResource scanResult/import -scHTTPMethod POST -scJSONInput $dict -scAdditionalHeadersDict @{"Content-Type" = "application/json"}
+}
+
+Read-ConfigFile
+SC-GetCredentials
