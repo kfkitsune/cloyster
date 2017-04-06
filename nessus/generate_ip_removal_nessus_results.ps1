@@ -5,9 +5,11 @@ formats:
 - Raw IP: 1.2.3.4
 - CIDR Range: 192.168.1.0/24
 - IP To-From Range: 10.10.10.0-10.10.10.20
+
+Requires WMF v5
 #>
 
-Function Get-FileName($initialDirectory) {
+Function Get-FileName() {
     <#
     Retrieve a file name from a GUI-based file picker
 
@@ -17,10 +19,14 @@ Function Get-FileName($initialDirectory) {
     Returns:
         The full path to the selected file
     #>  # Yes, it's a Pythonic comment... hiss!
+    param(
+        $initialDirectory,
+        $filter
+    )
     [System.Reflection.Assembly]::LoadWithPartialName("System.windows.forms") | Out-Null
     $OpenFileDialog = New-Object System.Windows.Forms.OpenFileDialog
     $OpenFileDialog.initialDirectory = $initialDirectory
-    $OpenFileDialog.filter = @("Nessus Results File (*.nessus)| *.nessus|Text File with IPs (*.txt) | *.txt")
+    $OpenFileDialog.filter = @($filter)
     $OpenFileDialog.ShowDialog() | Out-Null
     $OpenFileDialog.filename
 }
@@ -70,10 +76,11 @@ function Get-IPRange {
 
 # Get the XML data...
 Write-Host -ForegroundColor Yellow "Give me the removeip.nessus template..."
-[xml]$nessusFile = Get-Content(Get-FileName(Get-Location))
+[xml]$nessusFile = Get-Content(Get-FileName -initialDirectory (Get-Location) -filter "Nessus Results File (*.nessus)| *.nessus")
 # Get the targets...
 Write-Host -ForegroundColor Yellow "Give me text file with IPs to remove (one per line)..."
-$target_ip_addrs = Get-Content(Get-FileName(Get-Location))
+$target_ip_file = Get-FileName -initialDirectory (Get-Location) -filter "Text File with IPs (*.txt) | *.txt"
+$target_ip_addrs = Get-Content($target_ip_file)
 
 <### Change out the template IP for the new IP(s) (Lines 21, 4378, 4380) ###>
 # Line 21: NessusClientData_v2.Policy.Preferences.ServerPreferences.preference; Get the 'TARGET' name/value pair
@@ -134,8 +141,14 @@ foreach ($target in $target_ip_addrs) {
 [void]$template_node.ParentNode.RemoveChild($template_node)
 
 # Write-out the new XML file
-$output_filename = (Get-Location).ToString() + "\Remove IP Nessus File - Populated.nessus"
-$nessusFile.Save($output_filename)
+$nessus_output_filename = (Split-Path $target_ip_file) + "\Remove IP Nessus File - Populated.nessus"
+$nessusFile.Save($nessus_output_filename)
+
+# Compress the .nessus file, and remove the .nessus file
+$zip_output_filename = (Split-Path $target_ip_file) + "\Remove IP Nessus File - Populated.zip"
+Compress-Archive $nessus_output_filename -DestinationPath $zip_output_filename
+Remove-Item $nessus_output_filename
+
 
 Write-Host -ForegroundColor Green "Complete!"
 Start-Sleep -Seconds 2
