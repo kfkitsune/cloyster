@@ -6,7 +6,7 @@
       https://github.com/kfkitsune/cloyster/blob/master/nessus/generate_ip_removal_nessus_results.removeip.nessus
     The IP list can be in the format of:
       - 10.20.30.40
-      - 172.16.0.0
+      - 172.16.0.0/19
       - 192.168.0.0-192.168.0.10
 #>
 
@@ -530,4 +530,17 @@ $sc_uploaded_filename = SC-Upload-File -filePath $zip_output_filename
 # Then issue the command to import it.
 SC-Import-Nessus-Results -generatedFilename $sc_uploaded_filename
 
+# Did the upload complete successfully?
+if ($scResponse.error_code -eq 0) {
+    Remove-Item $zip_output_filename
+    Write-Host -ForegroundColor Green "Upload and import successful!"
+}
+else {
+    # OwO -- Something Happened(TM). (Seriously, how is that a useful error, Microsoft?)
+    Write-Host -ForegroundColor Red "Upload/Import Unsuccessful..."
+}
+
+# Cleanly close out of the session
 SC-Logout
+
+Start-Sleep -Seconds 3
