@@ -151,7 +151,7 @@ function SC-Connect {
         [ValidateSet("auditFile", "config", "credential", "currentUser", "currentOrganization", "feed", "file/upload",
         "group", "ipInfo", "lce", "lce/eventTypes", "scanner", "organization", "passivescanner", "plugin", "pluginFamily",
         "query", "repository", "role", "scan", "policy", "scanResult", "zone", "status", "system", "ticket", "token",
-        "reportDefinition", "scanResult/import")]
+        "reportDefinition", "scanResult/import", "analysis")]
           [string]$scResource,
         [ValidatePattern("^\d+")]
           [int]$scResourceID,
@@ -166,9 +166,11 @@ function SC-Connect {
     <#
         Undocumented scResource values:
         - reportDefinition
+        - scanResult/import
     #>
 
-    $json = $scJSONInput | ConvertTo-Json -Compress
+    # Depth at 10 because the incoming dict might be more than 2 levels deep
+    $json = $scJSONInput | ConvertTo-Json -Compress -Depth 10
 
     # If we have a token, then the X-SecurityCenter header must be set
     if ($script:scToken -eq "") { $http_headers=@{} }
@@ -418,6 +420,57 @@ function SC-Get-Repositories() {
 }
 
 
+function SC-Get-RepositoryIPs() {
+    <#
+        Not an endpoint, but a helper function to `SC-Get-Repositories` to easily extract a PSCustomObject
+        containing the repository ID number, the name of said repository, and the IPs able to be imported to
+        the aforementioned repository.
+    #>
+    SC-Get-Repositories -type All -name -typeFields
+    $ret = ($scResponse.response | 
+                Select-Object @{Name='repo_id';Expression={$_.id}},
+                              @{Name='repo_name';Expression={$_.name}},
+                              @{Name='ip_range';Expression={$_.typeFields.ipRange}}
+            )
+    return $ret
+}
+
+
+function SC-Get-ScanZone() {
+    <#
+        https://support.tenable.com/support-center/cerberus-support-center/includes/widgets/sc_api/Scan-Zone.html
+    #>
+    param (
+        #`id` always comes back
+        [switch]$name,
+        [switch]$description,
+        [switch]$ipList,
+        [switch]$createdTime,
+        [switch]$modifiedTime,
+        [switch]$organizations,
+        [switch]$activeScanners,
+        [switch]$totalScanners,
+        [switch]$scanners
+    )
+    $dict = @{
+        "fields" = "id";
+    }
+    # Set all the fields, if they were requested to be set...
+    if ($name) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",name")}
+    if ($description) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",description")}
+    if ($ipList) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",ipList")}
+    if ($createdTime) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",createdTime")}
+    if ($modifiedTime) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",modifiedTime")}
+    if ($organizations) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",organizations")}
+    if ($activeScanners) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",activeScanners")}
+    if ($totalScanners) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",totalScanners")}
+    if ($scanners) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",scanners")}
+
+    # Send the request...
+    SC-Connect -scResource zone -scHTTPMethod GET -scQueryString (SC-BuildQueryString -queryJSON $dict)
+}
+
+
 function SC-Upload-File() {
     <#
         A semi-loosely documented endpoint. It's documented, just not for all use-cases.
@@ -478,9 +531,61 @@ function SC-Import-Nessus-Results() {
         "timeoutAction" = "import";
     }
     # Send the import request
-    Write-Host ($dict | ConvertTo-Json)
     SC-Connect -scResource scanResult/import -scHTTPMethod POST -scJSONInput $dict -scAdditionalHeadersDict @{"Content-Type" = "application/json"}
 }
 
+
+function SC-Get-DetailedVulnerabilities() {
+    <#
+        This is noticably slower than directly exporting a report from the UI, but it -can- be done.
+        Which is reason enough to have this.
+    #>
+    param(
+        [ValidatePattern("^\d+")]
+          [int]$repository,
+        [ValidatePattern("^\d+")]
+          [int]$startOffset = 0,
+        [ValidatePattern("^\d+")]
+        [ValidateScript({$startOffset -le $_})]
+          [int]$endOffset = 50
+    )
+    $dict = @{
+        "type" = "vuln";
+        "sourceType" = "cumulative";
+        "query" = @{
+            "context" = "";
+            "createdTime" = 0;
+            "description" = "";
+            "startOffset" = $startOffset;
+            "endOffset" = $endOffset;
+            "groups" = @();
+            "modifiedTime" = "0";
+            "name" = "";
+            "sourceType" = "cumulative";
+            "status" = "-1";
+            "tags" = "";
+            "tool" = "vulndetails";
+            "type" = "vuln";
+            "vulnTool" = "vulndetails";
+            "filters" = @(@{
+                "filterName" = "repository"
+                "id" = "repository"
+                "isPredefined" = $true
+                "operator" = "="
+                "value" = @(@{
+                    "id" = "$repository"
+                })
+            })
+        }
+    } <# End query dict building #>
+    #$dict | ConvertTo-Json -Depth 10
+    SC-Connect -scResource analysis -scHTTPMethod POST -scJSONInput $dict
+    
+    # Important items in the response: totalRecords & results
+    return $scResponse.response
+}
+
+
 Read-ConfigFile
 SC-GetCredentials
+$chosenCertThumb = Invoke-CertificateChooser
