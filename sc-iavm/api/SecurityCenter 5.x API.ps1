@@ -28,6 +28,13 @@ $externalConfig = $true
 $scriptDebug = $false
 
 
+function Convert-UnixEpoch-Timestamp() {
+    <# Make a Unix epoch'd timestamp human readable. #>
+    param([int]$timestamp)
+    return (Get-Date -Year 1970 -Month 1 -Day 1 -Hour 0 -Minute 0).AddSeconds($timestamp)
+}
+
+
 function Read-ConfigFile {
     [byte[]]$tmp = @()  # Storage for the key
     if ($externalConfig -and (Test-Path -Path $scCredentialsKeyFileName)) {
@@ -321,6 +328,26 @@ function SC-Delete-Scan() {
 }
 
 
+function SC-Get-RolloverScans() {
+    <# Find any rollover scans #>
+    SC-Get-Scans -filter managable -name -schedule -ownerGroup -owner -createdTime
+    return $scResponse.response.manageable | Where-Object { $_.schedule.type -eq "rollover" }
+}
+
+
+function SC-Purge-RolloverScans() {
+    <# Purge any and all rollover scans that are detected in the SecurityCenter #>
+    $rollover_scans = SC-Get-RolloverScans
+    $curr_count = 0
+    foreach ($scan in $rollover_scans) {
+        $progress = ($curr_count++ / $rollover_scans.Count) * 100
+        Write-Progress -Activity "Purging all Rollover scans" -Status ("Percent complete: " + $progress + "%") -PercentComplete $progress
+        Write-Host ("Purging: {id = " + $scan.id + "; name = `"" + $scan.name + "`"; owner = `"" + $scan.owner.username + "`"}")
+        SC-Delete-Scan -scan_id $scan.id
+    }
+}
+
+
 function SC-Get-Status() {
     SC-Connect -scResource status -scHTTPMethod GET
     return $script:scResponse.response
@@ -337,7 +364,28 @@ function SC-Get-Scans() {
         [switch]$ipList,
         [switch]$type,
         [switch]$policy,
-        [switch]$creator
+        [switch]$plugin,
+        [switch]$repository,
+        [switch]$zone,
+        [switch]$dhcpTracking,
+        [switch]$classifyMitigatedAge,
+        [switch]$emailOnLaunch,
+        [switch]$emailOnFinish,
+        [switch]$timeoutAction,
+        [switch]$scanningVirtualHosts,
+        [switch]$rolloverType,
+        [switch]$createdTime,
+        [switch]$modifiedTime,
+        [switch]$ownerGroup,
+        [switch]$creator,
+        [switch]$owner,
+        [switch]$reports,
+        [switch]$assets,
+        [switch]$credentials,
+        [switch]$numDependents,
+        [switch]$schedule,
+        [switch]$policyPrefs,
+        [switch]$maxScanTime
     )
     # Build the query dict
     $dict = @{
@@ -350,7 +398,28 @@ function SC-Get-Scans() {
     if ($ipList) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",ipList")}
     if ($type) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",type")}
     if ($policy) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",policy")}
+    if ($plugin) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",plugin")}
+    if ($repository) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",repository")}
+    if ($zone) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",zone")}
+    if ($dhcpTracking) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",dhcpTracking")}
+    if ($classifyMitigatedAge) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",classifyMitigatedAge")}
+    if ($emailOnLaunch) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",emailOnLaunch")}
+    if ($emailOnFinish) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",emailOnFinish")}
+    if ($timeoutAction) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",timeoutAction")}
+    if ($scanningVirtualHosts) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",scanningVirtualHosts")}
+    if ($rolloverType) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",rolloverType")}
+    if ($createdTime) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",createdTime")}
+    if ($modifiedTime) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",modifiedTime")}
+    if ($ownerGroup) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",ownerGroup")}
     if ($creator) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",creator")}
+    if ($owner) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",owner")}
+    if ($reports) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",reports")}
+    if ($assets) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",assets")}
+    if ($credentials) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",credentials")}
+    if ($numDependents) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",numDependents")}
+    if ($schedule) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",schedule")}
+    if ($policyPrefs) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",policyPrefs")}
+    if ($maxScanTime) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",maxScanTime")}
     SC-Connect -scResource scan -scHTTPMethod GET -scQueryString (SC-BuildQueryString $dict)
 }
 
@@ -588,4 +657,4 @@ function SC-Get-DetailedVulnerabilities() {
 
 Read-ConfigFile
 SC-GetCredentials
-$chosenCertThumb = Invoke-CertificateChooser
+SC-Authenticate
