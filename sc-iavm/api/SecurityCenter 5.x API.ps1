@@ -424,6 +424,20 @@ function SC-Get-Scans() {
 }
 
 
+function SC-Get-FullScanInformation() {
+    <# Get full scan information as if viewing the scan through the SecurityCenter user interface #>
+    param(
+        [ValidatePattern("^\d+")]
+          [int]$scScanID
+    )
+    $dict = @{
+        "fields" = "modifiedTime,description,name,repository,schedule,dhcpTracking,emailOnLaunch,emailOnFinish,reports,canUse,canManage,status,canUse,canManage,owner,groups,ownerGroup,status,name,createdTime,schedule,policy,plugin,type,policy,zone,credentials,timeoutAction,rolloverType,scanningVirtualHosts,classifyMitigatedAge,assets,ipList,maxScanTime,plugin";
+        "expand" = "details,credentials";
+    }
+    SC-Connect -scResource scan -scResourceID $scScanID -scHTTPMethod GET -scQueryString (SC-BuildQueryString $dict)
+}
+
+
 function SC-Get-ReportDefinition() {
     <#
         An undocumented API endpoint.
