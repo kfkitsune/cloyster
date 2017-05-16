@@ -338,7 +338,7 @@ if ($chosenCertThumb -eq "") {  # Only execute if we don't have a thumbprint fro
 <# Gotta log in before anything! #>
 Write-Host("You may be prompted for your PIN! If so, would you kindly provide it to the dialog to permit authentication? Thanks!") -ForegroundColor Green
 Write-Host("Logging in; wait...")
-SC-Login;
+SC-Authenticate;
 # Write-Host("We just got a /token/. We just got a \token\. We just got a |token|, I wonder what it is‽ ::: " + $scToken);
 
 <# GET THOSE IAVMS! CHAAAARGE! #>
