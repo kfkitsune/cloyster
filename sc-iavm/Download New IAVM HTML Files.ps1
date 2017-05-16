@@ -103,8 +103,7 @@ if (!(Test-Path $iavmZipFileName)) {
 
 # Unzip the ZIP
 if (Test-Path -Path $iavmZipFileName) {
-    Add-Type -AssemblyName System.IO.Compression.Filesystem
-    [IO.Compression.Zipfile]::ExtractToDirectory($iavmZipFileName,$iavmDirectoryName)
+    Expand-Archive $iavmZipFileName
 }
 
 Push-Location #Store where we currently are for later cleanup.
