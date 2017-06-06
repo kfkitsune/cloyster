@@ -50,10 +50,8 @@ function Read-ConfigFile {
         $script:scCredentialsKey = $tmp
     }
     else {  # Generate the key, since it doesn't exist...
-        # $tmp = New-Object System.Collections.ArrayList
         for ($i=0; $i -lt 24; $i++) {
             $rand = Get-Random -Minimum 0 -Maximum 255
-            # $tmp.Add($rand) | Out-Null
             $tmp += [byte]$rand
         }
         $Local:zz = @{}
@@ -67,7 +65,7 @@ function Read-ConfigFile {
 }
 
 
-function Output-Debug { # Simple output if we are debugging.
+function Output-Debug {  # Simple output if we are debugging.
     param($req)
     if ($scriptDebug) {
         $Global:DebugPreference = "Continue"
@@ -99,7 +97,7 @@ function SC-GetCredentials {
         Output-Debug $Script:scCredentials.GetNetworkCredential().Password
         Output-Debug $Script:scURI
     }
-    else { # Gotta make them!
+    else {  # Gotta make them!
         $Local:tmp = $false
         $Local:exitCount = 3
         while ($Local:tmp -ne $true) {
@@ -116,7 +114,7 @@ function SC-GetCredentials {
                 }
                 Write-Host No credentials detected... enter credentials... $Local:exitCount more to cancel...
             }
-        } # End credential capture loop
+        }  # End credential capture loop
         if ($Script:scURI -eq "") {
             $Script:scURI = Read-Host -Prompt "The SecurityCenter URI ... please enter the full URI to the SecurityCenter (w/o trailing slash)"
             # Pre-make the base REST API URI
@@ -144,8 +142,6 @@ function SC-BuildQueryString {
         $reqStr += $Local:item.Name + '=' + [System.Web.HttpUtility]::UrlEncode($Local:item.Value) + '&'
     }
     $reqStr = $reqStr.TrimEnd('&')
-    # Generate the request string
-    # $reqStr = [System.Web.HttpUtility]::UrlEncode(($reqStr))
     
     return $reqStr;
 }
@@ -290,41 +286,44 @@ function SC-Get-Plugins() {
 
 
 function Process-Xref-String {
-    param([string]$Type, 
-          [string]$Xrefs,
-          [string]$PluginID);
+    param(
+        [ValidateSet("IAVA","IAVB","IAVT")]
+          [string]$Type,
+        [ValidatePattern("^\d+")]
+          [string]$PluginID,
+        [string]$Xrefs
+    );
 
-    $strSplit = $Xrefs.Split(" ")
-    $iavTmp = "";
-    foreach($z in $strSplit.GetEnumerator()) {
-            #Write-Host($z)
-        if ($z.StartsWith($type)) {
-            $iavTmp = $z.Trim(",")
-            $iavTmp = $iavTmp.Replace($type + ":","")  <# Superfluous; Kill the IAVA: IAVB: prefix #>
-            #Write-Host($iavTmp)
+    $strSplit = $Xrefs.Split(", ")
+    #$iavTmp = "";
+    foreach($item in $strSplit.GetEnumerator()) {
+        if ($item.StartsWith($type)) {  # An individual xref (e.g., "IAVA:2017-A-0040" or "OSVDB:151766")
+            [void]($item -match '(?:IAV[ABT]:)(\d{4}-[ABT]-\d{4})')
+            $iavm_id = $matches[1]  
             <### Plugin -> IAVM ID ###>
-			try {$Script:htTmpPluginToIAVM.Add($PluginID, $iavTmp)}  <# Key doesn't exist yet, so add it in now #>
+			try {$Script:htTmpPluginToIAVM.Add($PluginID, $iavm_id)}  <# Key doesn't exist yet, so add it in now #>
             catch [System.Management.Automation.MethodInvocationException] {  <# Key exists, so append the pluginID #>
-                #Write-Host(">>> IAVM ID <<<" + $iavTmp)
-                $qq = $Script:htTmpPluginToIAVM.Get_Item($PluginID)
-                $qq = $qq + ", " + $iavTmp
-                $qq = $qq.TrimStart(", ") <# Because gremlins. #>
-                #Write-Host($qq)
-                $Script:htTmpPluginToIAVM.Set_Item($PluginID, $qq)
+                $mapping_value = $Script:htTmpPluginToIAVM.Get_Item($PluginID)
+                # Only make the mapping if it is not already in the value
+                if ($mapping_value.Split(', ') -notcontains $iavm_id) {
+                    $mapping_value = $mapping_value + ", " + $iavm_id
+                    $Script:htTmpPluginToIAVM.Set_Item($PluginID, $mapping_value)
+                }
             }
 			<### IAVM ID -> Plugin ###>
-			try {$Script:htTmpIAVMToPlugin.Add($iavTmp, $PluginID)} <# Key doesn't exist yet, so add it in now #>
-            catch [System.Management.Automation.MethodInvocationException] { <# Key exists, so append the pluginID #>
-                #Write-Host(">>> IAVM ID <<<" + $iavTmp)
-                $qq = $Script:htTmpIAVMToPlugin.Get_Item($iavTmp)
-                $qq = $qq + ", " + $PluginID
-                $qq = $qq.TrimStart(", ") <# Because gremlins. #>
-                #Write-Host($qq)
-                $Script:htTmpIAVMToPlugin.Set_Item($iavTmp, $qq)
+			try {$Script:htTmpIAVMToPlugin.Add($iavm_id, $PluginID)}  <# Key doesn't exist yet, so add it in now #>
+            catch [System.Management.Automation.MethodInvocationException] {  <# Key exists, so append the pluginID #>
+                $mapping_value = $Script:htTmpIAVMToPlugin.Get_Item($iavm_id)
+                # Only make the mapping if it is not already in the value
+                if ($mapping_value.Split(', ') -notcontains $PluginID) {
+                    $mapping_value = $mapping_value + ", " + $PluginID
+                    $Script:htTmpIAVMToPlugin.Set_Item($iavm_id, $mapping_value)
+                }
             }
         }
     }
 }
+
 
 Read-ConfigFile;
 SC-GetCredentials;
@@ -359,15 +358,15 @@ Write-Host("Doing magic; wait...")
     Values can be updated via $hashtable.Set_Item(KEY,NEWVALUE)
 #>
 foreach($q in $scIAVAs) { <# We'll do the A's first #>
-    Process-Xref-String -Type "IAVA" -Xrefs $q.xrefs -PluginID $q.id
+    Process-Xref-String -Type IAVA -Xrefs $q.xrefs -PluginID $q.id
 }
 Write-Host("Doing more magic; wait...")
 foreach($q in $scIAVBs) { <# Then the B's #>
-    Process-Xref-String -Type "IAVB" -Xrefs $q.xrefs  -PluginID $q.id
+    Process-Xref-String -Type IAVB -Xrefs $q.xrefs -PluginID $q.id
 }
 Write-Host("Just a bit more more magic; wait...")
 foreach($q in $scIAVTs) { <# Then the T's ... because completeness. #>
-    Process-Xref-String -Type "IAVT" -Xrefs $q.xrefs  -PluginID $q.id
+    Process-Xref-String -Type IAVT -Xrefs $q.xrefs -PluginID $q.id
 }
 
 <# CSV Magicks Happen Here #>
