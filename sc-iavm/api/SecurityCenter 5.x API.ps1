@@ -158,12 +158,12 @@ function SC-Connect {
         [ValidateSet("auditFile", "config", "credential", "currentUser", "currentOrganization", "feed", "file/upload",
         "group", "ipInfo", "lce", "lce/eventTypes", "scanner", "organization", "passivescanner", "plugin", "pluginFamily",
         "query", "repository", "role", "scan", "policy", "scanResult", "zone", "status", "system", "ticket", "token",
-        "reportDefinition", "scanResult/import", "analysis")]
+        "reportDefinition", "scanResult/import", "analysis", "asset")]
           [string]$scResource,
         [ValidatePattern("^\d+")]
           [int]$scResourceID,
         <# Which HTTP Method are we using? #>
-        [ValidateSet("GET","POST","DELETE")]
+        [ValidateSet("GET","POST","PATCH","DELETE")]
           [string]$scHTTPMethod,
         $scQueryString, 
         $scJSONInput,
@@ -192,23 +192,32 @@ function SC-Connect {
     # Send it.
     if ($scHTTPMethod -eq "POST") {
         if ($scResourceID) { $Local:tmpUri = $scURI + $scResource + '/' + $scResourceID }
-        else { $Local:tmpUri = $scURI + $scResource
-            if ($scResource -eq "file/upload") {
-                $script:scResponse = (Invoke-RestMethod -Verbose -Uri $Local:tmpUri -Method POST -CertificateThumbprint $chosenCertThumb -Body $scRawRequestPayload -WebSession $scSession -TimeoutSec 180 -Headers $http_headers);
-            }
-            else {
-                $script:scResponse = (Invoke-RestMethod -Uri $Local:tmpUri -Method POST -CertificateThumbprint $chosenCertThumb -Body $json -WebSession $scSession -TimeoutSec 180 -Headers $http_headers);
-            }
+        else { $Local:tmpUri = $scURI + $scResource }
+        
+        if ($scResource -eq "file/upload") {
+            $script:scResponse = (Invoke-RestMethod -Verbose -Uri $Local:tmpUri -Method POST -CertificateThumbprint $chosenCertThumb -Body $scRawRequestPayload -WebSession $scSession -TimeoutSec 180 -Headers $http_headers);
         }
+        else {
+            $script:scResponse = (Invoke-RestMethod -Uri $Local:tmpUri -Method POST -CertificateThumbprint $chosenCertThumb -Body $json -WebSession $scSession -TimeoutSec 180 -Headers $http_headers);
+        }
+        
+    }
+    if ($scHTTPMethod -eq "PATCH") {
+        if ($scResourceID) { $Local:tmpUri = $scURI + $scResource + '/' + $scResourceID }
+        else { $Local:tmpUri = $scURI + $scResource }
+
+        $script:scResponse = (Invoke-RestMethod -Uri $Local:tmpUri -Method PATCH -CertificateThumbprint $chosenCertThumb -Body $json -WebSession $scSession -TimeoutSec 180 -Headers $http_headers);
     }
     elseif ($scHTTPMethod -eq "GET") {
         if ($scResourceID) { $Local:tmpUri = $scURI + $scResource + '/' + $scResourceID + $scQueryString }
         else { $Local:tmpUri = $scURI + $scResource + $scQueryString }
+
         $script:scResponse = (Invoke-RestMethod -Uri $Local:tmpUri -Method GET -CertificateThumbprint $chosenCertThumb -WebSession $scSession -TimeoutSec 180 -Headers $http_headers);
     }
     else {
         if ($scResourceID) { $Local:tmpUri = $scURI + $scResource + '/' + $scResourceID }
         else { $Local:tmpUri = $scURI + $scResource }
+
         $script:scResponse = (Invoke-RestMethod -Uri $Local:tmpUri -Method DELETE -CertificateThumbprint $chosenCertThumb -WebSession $scSession -TimeoutSec 180 -Headers $http_headers);
     }
     # Write-Host("Received: " + $Script:scResponse)
@@ -666,6 +675,86 @@ function SC-Get-DetailedVulnerabilities() {
     
     # Important items in the response: totalRecords & results
     return $scResponse.response
+}
+
+
+function SC-Get-Asset-List () {
+    <# Either gets a specific asset list identified by `$id`, or retrieves all asset lists. #>
+    param(
+        [ValidatePattern("\d+")]
+        [ValidateScript({$_ -ge 0})]
+          [int]$id = 0,
+        [switch]$name,
+        [switch]$description,
+        [switch]$request,
+        [switch]$creator,
+        [switch]$owner,
+        [switch]$ownerGroup,
+        [switch]$targetGroup,
+        [switch]$groups,
+        [switch]$type,
+        [switch]$tags,
+        [switch]$context,
+        [switch]$template,
+        [switch]$createdTime,
+        [switch]$modifiedTime,
+        [switch]$repositories,
+        [switch]$ipCount,
+        [switch]$assetDataFields,
+        [switch]$typeFields,
+        [switch]$viewableIPs
+    )
+    $dict = @{
+        "fields" = "id";
+    }
+    if ($name) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",name")}
+    if ($description) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",description")}
+    if ($status) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",status")}
+    if ($creator) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",creator")}
+    if ($owner) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",owner")}
+    if ($ownerGroup) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",ownerGroup")}
+    if ($targetGroup) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",targetGroup")}
+    if ($groups) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",groups")}
+    if ($type) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",type")}
+    if ($tags) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",tags")}
+    if ($context) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",context")}
+    if ($template) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",template")}
+    if ($createdTime) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",createdTime")}
+    if ($modifiedTime) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",modifiedTime")}
+    if ($repositories) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",repositories")}
+    if ($ipCount) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",ipCount")}
+    if ($assetDataFields) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",assetDataFields")}
+    if ($typeFields) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",typeFields")}
+    if ($viewableIPs) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",viewableIPs")}
+
+    if ($id -eq 0) {
+        # Default case for when we want to retrieve all asset lists from the SecurityCenter
+        SC-Connect -scResource asset -scHTTPMethod GET -scQueryString (SC-BuildQueryString -queryJSON $dict)
+    }
+    else {
+        # We only want a single asset list as identified by `$id`.
+        SC-Connect -scResourceID $id -scResource asset -scHTTPMethod GET -scQueryString (SC-BuildQueryString -queryJSON $dict)
+    }
+}
+
+
+function SC-Patch-Asset-DNSList() {
+    <# Modifies the asset identified by $id, changing only the passed in fields; this focuses on DNS List modification,
+         but is by no means restricted to DNS-based asset lists. Consider this function an example. See API for full details. #>
+    param(
+        [ValidatePattern("\d+")]
+        [ValidateScript({$_ -gt 0})]
+          [int]$id,
+        [string]$definedDNSNames = $null,
+        [string]$description = $null,
+        [string]$name = $null
+    )
+    $dict = @{}
+    if ($definedDNSNames) { $dict += @{"definedDNSNames" = $definedDNSNames} }
+    if ($description) { $dict += @{"description" = $description} }
+    if ($name) { $dict += @{"name" = $name} }
+    
+    SC-Connect -scResource asset -scResourceID $id -scHTTPMethod PATCH -scJSONInput $dict
 }
 
 
