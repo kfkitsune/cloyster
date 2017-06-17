@@ -202,7 +202,7 @@ function SC-Connect {
         }
         
     }
-    if ($scHTTPMethod -eq "PATCH") {
+    elseif ($scHTTPMethod -eq "PATCH") {
         if ($scResourceID) { $Local:tmpUri = $scURI + $scResource + '/' + $scResourceID }
         else { $Local:tmpUri = $scURI + $scResource }
 
