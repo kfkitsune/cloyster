@@ -389,9 +389,10 @@ if ($scResponse.response.name -eq $target_asset_list_name) {
         Clear-Variable -ErrorAction SilentlyContinue -Scope Local -Name source_ou  # Clear this beforehand to guard against multiple runs in the same session breaking things.
         foreach ($pos in $Local:input..($Local:sys_dn_split.Length - 1)) { $Local:source_ou += $Local:sys_dn_split.Get($pos) + ',' }
         $ou = $Local:source_ou.TrimEnd(',')
-        # Get the DNS suffix for this system
-        $dns_suffix = (Get-DnsClientGlobalSetting).SuffixSearchList[0]  # Yes, this /may/ have multiple items, but I only care about the first (zeroth) element.
     }
+
+    # Get the DNS suffix for this system (Only the zeroth-element)
+    $dns_suffix = (Get-DnsClientGlobalSetting).SuffixSearchList[0]
 
     Write-Host -ForegroundColor Cyan "Getting information from AD; this may take a few moments..."
     $ad_results = Get-ADComputer -SearchBase $ou -SearchScope Subtree -Filter "*"
