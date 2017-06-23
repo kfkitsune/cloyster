@@ -24,26 +24,25 @@ $use_defaults = Read-Host -Prompt "Enter (Y) or (N); other values default to no"
 if ($use_defaults.ToLower() -eq "y") { $use_defaults = $true }
 else { $use_defaults = $false }
 
+$scripts = @{
+    # Execute the following tasks, using the format of:
+    # 'Name of thing we are doing' = 'Location of the script.ps1';
+    "IAVM/Plugin Mapping" = ".\Nessus Plugin and IAVM Mappings.ps1";
+    "Download New IAVM HTML Files" = ".\Download New IAVM HTML Files.ps1";
+    "Generate IAVM Summary Information" = ".\Generate IAVM Summary Information.ps1";
+    "Auto Update AD DNS Asset List" = ".\Auto Update AD DNS Asset List.ps1"
+}
 
-$i = 0  # Current script number.
-$j = 4  # Total scripts to launch.
 Write-Host ""
 Write-Host "~~ Launching scripts... ~~" -ForegroundColor Cyan
-Write-Host "("(++$i)"/"($j)") IAVM/Plugin Mapping..." -ForegroundColor Cyan
-& '.\Nessus Plugin and IAVM Mappings.ps1' -paramPKIThumbprint $selectedCertificateThumbprint
+
+$count = 0
+foreach ($kv in $scripts.GetEnumerator()) {
+    Write-Progress -Activity "Executing scripts..." -Status ("Executing... " + $kv.Name) -PercentComplete (($count++ / $scripts.Count) * 100)
+    & $kv.Value -paramPKIThumbprint $selectedCertificateThumbprint -paramUseDefaults $use_defaults
+    Write-Host($kv.Name + " script execution completed.") -ForegroundColor Cyan -BackgroundColor DarkGreen
+}
 
 Write-Host ""
-Write-Host "("(++$i)"/"($j)") Download New IAVM HTML Files..." -ForegroundColor Cyan
-& '.\Download New IAVM HTML Files.ps1' -paramPKIThumbprint $selectedCertificateThumbprint -paramUseDefaults $use_defaults
-
-Write-Host ""
-Write-Host "("(++$i)"/"($j)") Generate IAVM Summary Information..." -ForegroundColor Cyan
-& '.\Generate IAVM Summary Information.ps1' -paramPKIThumbprint $selectedCertificateThumbprint
-
-Write-Host ""
-Write-Host "("(++$i)"/"($j)") Update the Active Directory export asset list in SecurityCenter..." -ForegroundColor Cyan
-& '.\Auto Update AD DNS Asset List.ps1' -paramPKIThumbprint $selectedCertificateThumbprint
-
-Write-Host ""
-Write-Host "~~ End of script execution ~~" -ForegroundColor Green
+Write-Host "~~ Complete! ~~" -ForegroundColor Green
 Start-Sleep -Seconds 3
