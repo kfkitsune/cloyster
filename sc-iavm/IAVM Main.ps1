@@ -26,19 +26,23 @@ else { $use_defaults = $false }
 
 
 $i = 0  # Current script number.
-$j = 3  # Total scripts to launch.
+$j = 4  # Total scripts to launch.
 Write-Host ""
 Write-Host "~~ Launching scripts... ~~" -ForegroundColor Cyan
-Write-Host "("(++$i)"/"($j)") IAVM/Plugin Mapping" -ForegroundColor Cyan
+Write-Host "("(++$i)"/"($j)") IAVM/Plugin Mapping..." -ForegroundColor Cyan
 & '.\Nessus Plugin and IAVM Mappings.ps1' -paramPKIThumbprint $selectedCertificateThumbprint
 
 Write-Host ""
-Write-Host "("(++$i)"/"($j)") IAVM HTML Download" -ForegroundColor Cyan
+Write-Host "("(++$i)"/"($j)") Download New IAVM HTML Files..." -ForegroundColor Cyan
 & '.\Download New IAVM HTML Files.ps1' -paramPKIThumbprint $selectedCertificateThumbprint -paramUseDefaults $use_defaults
 
 Write-Host ""
-Write-Host "("(++$i)"/"($j)") IAVM Summary Information" -ForegroundColor Cyan
+Write-Host "("(++$i)"/"($j)") Generate IAVM Summary Information..." -ForegroundColor Cyan
 & '.\Generate IAVM Summary Information.ps1' -paramPKIThumbprint $selectedCertificateThumbprint
+
+Write-Host ""
+Write-Host "("(++$i)"/"($j)") Update the Active Directory export asset list in SecurityCenter..." -ForegroundColor Cyan
+& '.\Auto Update AD DNS Asset List.ps1' -paramPKIThumbprint $selectedCertificateThumbprint
 
 Write-Host ""
 Write-Host "~~ End of script execution ~~" -ForegroundColor Green
