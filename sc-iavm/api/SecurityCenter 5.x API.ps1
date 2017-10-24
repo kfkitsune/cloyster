@@ -202,7 +202,7 @@ function SC-Connect {
         }
         
     }
-    elseif ($scHTTPMethod -eq "PATCH") {
+    if ($scHTTPMethod -eq "PATCH") {
         if ($scResourceID) { $Local:tmpUri = $scURI + $scResource + '/' + $scResourceID }
         else { $Local:tmpUri = $scURI + $scResource }
 
@@ -433,6 +433,84 @@ function SC-Get-Scans() {
 }
 
 
+function SC-Edit-Scan() {
+    <#
+        Edit the scan with an ID ``id``, changing only passed in fields. Not fully implemented from the API reference.
+        API Reference: https://support.tenable.com/support-center/cerberus-support-center/includes/widgets/sc_api/Scan.html
+    #>
+    param(
+        [Parameter(Mandatory=$true)]
+        [ValidateScript({$_ -gt 0})]
+          [int]$id,
+        [ValidateScript({$_ -gt 0})]
+          [int]$newPolicyID = $null
+    )
+    $dict = @{}
+    if ($newPolicyID) { $dict += @{ "policy" = @{"id" = $newPolicyID} } }
+
+    # We must have something to change before we send (more validation)
+    if ($dict.Count -eq 0) {
+        throw "A scan setting must be edited during a call to SC-Edit-Scan; no settings provided (`$dict is empty)"
+    }
+
+    SC-Connect -scResource scan -scResourceID $id -scHTTPMethod PATCH -scJSONInput $dict
+}
+
+
+function SC-Get-ScanPolicy() {
+    <#
+        Get the list of defined policies on the SecurityCenter.
+
+        API Reference: https://support.tenable.com/support-center/cerberus-support-center/includes/widgets/sc_api/Scan-Policy.html
+
+        Endpoint: /rest/policy
+    #>
+    param(
+        [switch]$name,
+        [switch]$description,
+        [switch]$status,
+        [switch]$policyTemplate,
+        [switch]$policyProfileName,
+        [switch]$creator,
+        [switch]$tags,
+        [switch]$createdTime,
+        [switch]$modifiedTime,
+        [switch]$context,
+        [switch]$generateXCCDFResults,
+        [switch]$auditFiles,
+        [switch]$preferences,
+        [switch]$targetGroup
+    )
+    # Build the query dict
+    $dict = @{
+        # The ID number is always returned (even if id wasn't specified)
+        "fields" = "id"
+    }
+    if ($name) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",name")}
+    if ($description) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",description")}
+    if ($status) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",status")}
+    if ($policyTemplate) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",policyTemplate")}
+    if ($policyProfileName) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",policyProfileName")}
+    if ($creator) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",creator")}
+    if ($tags) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",tags")}
+    if ($createdTime) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",createdTime")}
+    if ($modifiedTime) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",modifiedTime")}
+    if ($context) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",context")}
+    if ($generateXCCDFResults) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",generateXCCDFResults")}
+    if ($auditFiles) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",auditFiles")}
+    if ($preferences) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",preferences")}
+    if ($targetGroup) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",targetGroup")}
+    # Name/Description/Status come back by default if no fields are requested
+    if (!($name -or $description -or $status -or $policyTemplate -or $policyProfileName -or $creator -or
+          $tags -or $createdTime -or $modifiedTime -or $context -or $generateXCCDFResults -or $auditFiles -or 
+          $preferences -or $targetGroup)
+          ) {
+        $dict.Set_Item("fields", $dict.Get_Item("fields") + ",name,description,status")
+    }
+    SC-Connect -scResource policy -scHTTPMethod GET -scQueryString (SC-BuildQueryString -queryJSON $dict)
+}
+
+
 function SC-Get-FullScanInformation() {
     <# Get full scan information as if viewing the scan through the SecurityCenter user interface #>
     param(
@@ -601,7 +679,7 @@ function SC-Import-Nessus-Results() {
         Requires the addition of the "Content-Type:application/json" header.
     #>
     param(
-        $generatedFilename,
+        [string]$generatedFilename,
         [ValidatePattern("^\d+")]
           [int]$repositoryID = 7
     )
