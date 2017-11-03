@@ -620,6 +620,234 @@ function SC-Get-ScanInfo() {
 }
 
 
+function SC-Create-Scan() {
+    <#
+        Adds a new scan to the SecurityCenter.
+    #>
+    param(
+        [Parameter(Mandatory=$true)]
+          [string]$name,
+        [Parameter(Mandatory=$true,ParameterSetName="PluginType")]
+        [Parameter(Mandatory=$true,ParameterSetName="PolicyType")]
+        [ValidateSet("plugin", "policy")]
+          [string]$type,
+        [Parameter(Mandatory=$true,ParameterSetName="PluginType")]
+        [ValidateScript({$_ -gt 0})]
+          [int]$pluginID,  # Only used if ``$type`` is ``plugin``
+        [Parameter(Mandatory=$true,ParameterSetName="PolicyType")]
+        [ValidateScript({$_ -gt 0})]
+          [int]$policyID,  # Only used if ``$type`` is ``policy``
+        [string]$description = "",
+        [Parameter(Mandatory=$true)]
+        [ValidateScript({$_ -gt 0})]
+          [int]$repositoryID,
+        [Parameter(Mandatory=$true)]
+        [ValidateScript({$_ -gt 0})]
+          [int]$scanZoneID = 0,
+        [ValidateSet("true", "false")]
+          [string]$dhcpTracking = "false",
+        [ValidateSet(0,1,2,3,4,5,6,30,60,90,365)]
+          [int]$classifyMitigatedAge = 0,
+        $reports = @(),  # Not yet implemented
+        [ValidateScript({$_ -gt 0})]
+          [int[]]$assetListIDs = @(),
+        [ValidateScript({$_ -gt 0})]
+          [int[]]$credentialIDs = @(),
+        [ValidateSet("true", "false")]
+          [string]$emailOnLaunch = "false",
+        [ValidateSet("true", "false")]
+          [string]$emailOnFinish = "false",
+        [ValidateSet("discard", "import", "rollover")]
+          [string]$timeoutAction = "import",
+        [ValidateSet("nextDay", "template")]
+          [string]$rolloverType = "template",
+        [ValidateSet("true", "false")]
+          [string]$scanningVirtualHosts = "false",
+        [ValidateScript({$_ -gt 0})]  # In hours
+          [int]$maxScanTime = 3600,
+        [string]$ipList = "",  # Can be a CSV IP and/or FQDN list (e.g., "1.1.1.1,box.contoso.com")
+        [ValidateSet("template", "dependent", "ical", "never", "rollover")]
+          [string]$schedule = "template",
+        # If ``type`` is ``ical``, the following are required:
+        [DateTime]$startDateTime,
+        [ValidateSet("ONCE","DAILY","WEEKLY","MONTHLY")]
+          [string]$repeatRuleFreq = "ONCE",
+        [ValidateScript({($_ -gt 0) -and ($_ -le 20)})]
+          [string]$repeatRuleInterval = 1,
+        [ValidateSet("SU","MO","TU","WE","TH","FR","SA")]
+          [string[]]$repeatRuleByDay = "MO",
+        [int]$repeatRuleNthDayOfTheWeek = -1,  # e.g., first Monday of every Month (1MO), Tuesday (1TU), etc.
+        [int]$repeatRuleDayOfTheMonth = -1,  # e.g., repeat every month on day N
+        # If ``type`` is ``dependent`` the following is required:
+        [ValidateScript({$_ -gt 0})]
+          [int]$dependentScanID = $null
+    )
+    # Begin loading the parameters into the POST storage
+    $dict = @{}
+
+    $dict += @{ "name" = $name }
+    $dict += @{ "type" = $type }
+    if ($type -eq "plugin") {
+        if (!$pluginID) { throw "Plugin type is selected, but no pluginID specified." }
+        $dict += @{ "pluginID" = $pluginID }
+    }
+    elseif ($type -eq "policy") {
+        if (!$policyID) { throw "Policy type is selected, but no policyID specified." }
+        $dict += @{ "policy" = @{ "id" = $policyID } }
+    }
+    $dict += @{ "description" = $description }
+    $dict += @{ "repository" = @{ "id" = $repositoryID } }
+    $dict += @{ "zone" = @{ "id" = $scanZoneID } }
+    $dict += @{ "dhcpTracking" = $dhcpTracking }
+    $dict += @{ "classifyMitigatedAge" = $classifyMitigatedAge }
+    # Generate the schedule component
+    if (($schedule -eq "ical") -or ($schedule -eq "dependent")) {
+        $dict += (_GenerateScanScheduleJSONComponent -schedule $schedule -startDateTime $startDateTime -repeatRuleFreq $repeatRuleFreq -repeatRuleInterval $repeatRuleInterval `
+            -repeatRuleByDay $repeatRuleByDay -repeatRuleNthDayOfTheWeek $repeatRuleNthDayOfTheWeek `
+            -repeatRuleDayOfTheMonth $repeatRuleDayOfTheMonth -dependentScanID $dependentScanID
+        )
+    }
+    else {
+        $dict += @{ "schedule" = $schedule }
+    }
+    $dict += @{ "reports" = @() }
+    # Generate the Assets ID block
+    if ($assetListIDs) {
+        $assets = @()
+        foreach ($asset in $assetListIDs) {
+            $assets += @{ "id" = $asset }
+        }
+        $dict += @{ "assets" = $assets }
+    } else { $dict += @{ "assets" = @() } }
+    # Generate the Credential ID block
+    if ($credentialIDs) {
+        $creds = @()
+        foreach ($id in $credentialIDs) {
+            $creds += @{ "id" = $id }
+        }
+        $dict += @{ "credentials" = $creds }
+    } else { $dict += @{ "credentials" = @() } }
+    $dict += @{ "emailOnLaunch" = $emailOnLaunch }
+    $dict += @{ "emailOnFinish" = $emailOnFinish }
+    $dict += @{ "timeoutAction" = $timeoutAction }
+    $dict += @{ "scanningVirtualHosts" = $scanningVirtualHosts }
+    $dict += @{ "rolloverType" = $rolloverType }
+    $dict += @{ "ipList" = $ipList }
+    $dict += @{ "maxScanTime" = $maxScanTime }
+
+    # TODO: Finish this function. It's not yet ready (or tested).
+    return $dict
+}
+
+
+function _GenerateScanScheduleJSONComponent() {
+    <#
+        Constructs the ``schedule`` object for a scan request
+
+        Monthly scans are special and follow the rules below:
+          - To conduct a scan on the Nth-day of the week, set ``repeatRuleNthDayOfTheWeek`` to the week-number (1-4), and
+              ``repeatRuleByDay`` to the weekday on which the scan should run.
+          - To conduct a scan every Nth-day of the month (e.g., every first of the month), set ``repeatRuleDayOfTheMonth``
+              to the day on which the scan should be run monthly.
+
+        Parameters:
+          - schedule: The schedule type. This function processes `ical` and `dependent` types
+          - startDateTime: A DateTime object. Rounds **up** to the nearest 30 minute interval (respecting the SC UI's time bounds).
+          - repeatRuleFreq: How often should the scan run? Defaults to Once; Options are (Once, Daily, Weekly, Monthly)
+          - repeatRuleInterval: On frequencies other than `Once`, how often should this scan execute. Unit of time is
+              indicated in the same units as the Frequency. E.g., every 2 days, every 2 weeks, every 2 months.
+          - repeatRuleByDay: A [String] array of days on which to run scans on the 'DAILY' Frequency. Defaults to MO = Monday.
+          - repeatRuleNthDayOfTheWeek: On the Monthly frequency, specifies the week-number on which the scan executes. E.g,
+              run the scan on the Fourth Friday of each month. Must be specified with ``repeatRuleByDay`` (one element)
+          - repeatRuleDayOfTheMonth: On the Monthly frequency, specifies on which day the scan is to run, such as the first
+              of every month.
+          - dependentScanID: If ``schedule`` is of type `dependent`, the dependent scan ID to chain this schedule object to.
+    #>
+    param(
+        [ValidateSet("ical", "dependent")]
+          [string]$schedule,
+        [DateTime]$startDateTime,
+        [ValidateSet("ONCE", "DAILY", "WEEKLY", "MONTHLY")]
+          [string]$repeatRuleFreq = "ONCE",
+        [ValidateScript({($_ -gt 0) -and ($_ -le 20)})]
+          [string]$repeatRuleInterval = 1,
+        [ValidateSet("SU", "MO", "TU", "WE", "TH", "FR", "SA")]
+          [string[]]$repeatRuleByDay = "MO",
+        [ValidateSet(-1, 1, 2, 3, 4)]
+        [int]$repeatRuleNthDayOfTheWeek = -1,  # e.g., first Monday of every Month (1MO), Tuesday (1TU), etc.
+        [int]$repeatRuleDayOfTheMonth = -1,  # e.g., repeat every month on day N
+        [ValidateScript({$_ -ge -1})]
+          [int]$dependentScanID = -1
+    )
+    if ($schedule -eq "ical") {
+        # Process the ``repeatRule`` component of the ``schedule`` object...
+        if ($repeatRuleFreq -eq "MONTHLY") {
+            #Write-Host($repeatRuleDayOfTheWeek -eq -1)
+            if ( ($repeatRuleNthDayOfTheWeek -ne -1) -and ($repeatRuleDayOfTheMonth -ne -1) ) {
+                throw "Cannot determine correct repeat rule (repeatRuleDayOfTheWeek and repeatRuleDayOfTheMonth are both set)"
+            }
+            elseif ( ($repeatRuleNthDayOfTheWeek -eq -1) -and ($repeatRuleDayOfTheMonth -ne -1) ) {
+                $_repeatRule = "FREQ=" + $repeatRuleFreq + ";INTERVAL=" + $repeatRuleInterval + ";BYMONTHDAY=" + $repeatRuleDayOfTheMonth
+            }
+            elseif ( ($repeatRuleNthDayOfTheWeek -ne -1) -and ($repeatRuleDayOfTheMonth -eq -1) ) {
+                $_repeatRule = "FREQ=" + $repeatRuleFreq + ";INTERVAL=" + $repeatRuleInterval + ";BYDAY=" + $repeatRuleNthDayOfTheWeek + $repeatRuleByDay[0]
+            }
+        }
+        elseif ($repeatRuleFreq -eq "WEEKLY") {
+            $_byDay = @()
+            foreach ($day in $repeatRuleFreq) {
+                # Join any days into a single string array
+                $_byDay += $day
+            }
+            $_byDay = $_byDay | Get-Unique
+            $_repeatRule = "FREQ=" + $repeatRuleFreq + ";INTERVAL=" + $repeatRuleInterval + ";BYDAY=" + $_byDay
+        }
+        elseif ($repeatRuleFreq -eq "DAILY") {
+            $_repeatRule = "FREQ=" + $repeatRuleFreq + ";INTERVAL=" + $repeatRuleInterval
+        }
+        else {
+            # One-time scan, so no repeatRule needed
+            $_repeatRule = ""
+        }
+
+        # Process the date... Temp timezone until I figure out how I want to expand this...
+        if (($startDateTime.Minute % 30) -ne 0) {
+            # Round upwards to the nearest 30 minutes (respect the UI interface's limitations)
+            $diff = (30 - ($startDateTime.Minute % 30))
+            $startDateTime = $startDateTime.AddMinutes($diff)
+        }
+        $_tzone = "America/New_York"
+        $_start = "TZID=" + $_tzone + ":" + (Get-Date $startDateTime -Format yyyyMMddTHHmm00)
+    }
+    elseif ($schedule -eq "dependent") {
+        $_repeatRule = "FREQ=undefined;INTERVAL=1"
+        $_date = (Get-Date).AddDays(2)
+        $_start = (Get-Date $_date -Format MM/dd/yyyy)
+    }
+    else { throw [System.NotImplementedException] }  # We should **not** get to this block.
+    
+    # Construct/return the ``schedule`` object
+    $_schedule = @{
+            "start" = $_start;
+            "repeatRule" = $_repeatRule;
+            "type" = $schedule;
+    }
+    if ($schedule -eq "dependent") {
+        if ($dependentScanID -ne -1) {
+            $_schedule += @{ "dependentID" = $dependentScanID }
+        }
+        else {
+            # Dependent scans **must** have the dependentScanID set
+            throw "Cannot schedule a Dependent-type scan when `$dependentScanID is not set."
+        }
+    }
+
+    return @{ 
+        "schedule" = $_schedule
+    }
+}
+
+
 function SC-Edit-Scan() {
     <#
         Edit the scan with an ID ``id``, changing only passed in fields. Not fully implemented from the API reference.
@@ -658,7 +886,7 @@ function SC-Edit-Scan() {
         [ValidateScript({$_ -gt 0})]
           [int[]]$newCredentialIDs = $null,
         [Parameter(ParameterSetName="credentials")]
-        [switch]$clearCredentials,
+          [switch]$clearCredentials,
         [string]$newIPList = $null,
         [Parameter(ParameterSetName="assets")]
         [ValidateScript({$_ -gt 0})]
