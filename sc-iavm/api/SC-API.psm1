@@ -175,7 +175,7 @@ function SC-Connect {
         [ValidateSet("auditFile", "config", "credential", "currentUser", "currentOrganization", "feed", "file/upload",
         "group", "ipInfo", "lce", "lce/eventTypes", "scanner", "organization", "passivescanner", "plugin", "pluginFamily",
         "query", "repository", "role", "scan", "policy", "scanResult", "zone", "status", "system", "ticket", "token",
-        "reportDefinition", "scanResult/import", "analysis", "asset")]
+        "reportDefinition", "scanResult/import", "analysis", "asset", "repository/-ID-/ipInfo")]
           [string]$scResource,
         [ValidatePattern("^\d+$")]
           [int]$scResourceID,
@@ -208,8 +208,12 @@ function SC-Connect {
         }
     }
 
-    #$http_headers
-    #break
+    # Select endpoints operate in a manner such as /repository/{id}/ipInfo ... handle this
+    # TODO: Is there a more elegant method of doing this?
+    if ($scResource -like '*/-ID-/*') {
+        $scResource = $scResource.Replace("-ID-", $scResourceID)
+        Clear-Variable -Name $scResourceID
+    }
 
     # Grab a local copy of the SC REST URI
     $scURI = $Global:scURI_70DBAC67
@@ -354,6 +358,64 @@ function SC-Get-Plugins() {
 }
 
 
+function SC-Get-PluginInformation() {
+    <#
+        Retrieves the requested information for a single plugin ID number.
+    #>
+    param(
+        [Parameter(Mandatory=$true)]
+        [ValidateScript({$_ -ge 0})]
+          [int]$pluginID,
+        [switch]$name,
+        [switch]$description,
+        [switch]$family,
+        [switch]$type,
+        [switch]$copyright,
+        [switch]$version,
+        [switch]$sourceFile,
+        [switch]$source,
+        [switch]$dependencies,
+        [switch]$requiredPorts,
+        [switch]$requiredUDPPorts,
+        [switch]$cpe,
+        [switch]$srcPort,
+        [switch]$dstPort,
+        [switch]$protocol,
+        [switch]$riskFactor,
+        [switch]$solution,
+        [switch]$seeAlso,
+        [switch]$synopsis,
+        [switch]$checkType,
+        [switch]$exploitEase,
+        [switch]$exploitAvailable,
+        [switch]$exploitFrameworks,
+        [switch]$cvssVector,
+        [switch]$cvssVectorBF,
+        [switch]$baseScore,
+        [switch]$temporalScore,
+        [switch]$stigSeverity,
+        [switch]$pluginPubDate,
+        [switch]$pluginModDate,
+        [switch]$patchPubDate,
+        [switch]$patchModDate,
+        [switch]$vulnPubDate,
+        [switch]$modifiedTime,
+        [switch]$md5,
+        [switch]$xrefs
+    )
+    # Build the query dict; ID number is always returned (even if id wasn't specified)
+    $dict = @{ "fields" = "id" }
+    # Dynamically read the passed switches for the returned instead of a seperate line for each
+    foreach ($key in $PSBoundParameters.Keys) {
+        if ($key -ne 'pluginID') {
+            $dict.Set_Item("fields", $dict.Get_Item("fields") + ",$key")
+        }
+    }
+
+    return SC-Connect -scResource plugin -scResourceID $pluginID -scHTTPMethod GET -scQueryString (_SC-BuildQueryString $dict)
+}
+
+
 function SC-Get-ScanPolicy() {
     <#
         Get the list of defined policies on the SecurityCenter.
@@ -380,20 +442,12 @@ function SC-Get-ScanPolicy() {
     )
     # Build the query dict; ID number is always returned (even if id wasn't specified)
     $dict = @{ "fields" = "id" }
-    if ($name) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",name")}
-    if ($description) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",description")}
-    if ($status) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",status")}
-    if ($policyTemplate) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",policyTemplate")}
-    if ($policyProfileName) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",policyProfileName")}
-    if ($creator) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",creator")}
-    if ($tags) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",tags")}
-    if ($createdTime) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",createdTime")}
-    if ($modifiedTime) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",modifiedTime")}
-    if ($context) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",context")}
-    if ($generateXCCDFResults) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",generateXCCDFResults")}
-    if ($auditFiles) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",auditFiles")}
-    if ($preferences) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",preferences")}
-    if ($targetGroup) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",targetGroup")}
+    # Dynamically read the passed switches for the returned instead of a seperate line for each
+    foreach ($key in $PSBoundParameters.Keys) {
+        # Load the switch name into the fields
+        $dict.Set_Item("fields", $dict.Get_Item("fields") + ",$key")
+    }
+
     # Name/Description/Status come back by default if no fields are requested
     if (!($name -or $description -or $status -or $policyTemplate -or $policyProfileName -or $creator -or
           $tags -or $createdTime -or $modifiedTime -or $context -or $generateXCCDFResults -or $auditFiles -or 
@@ -401,6 +455,7 @@ function SC-Get-ScanPolicy() {
           ) {
         $dict.Set_Item("fields", $dict.Get_Item("fields") + ",name,description,status")
     }
+
     return SC-Connect -scResource policy -scHTTPMethod GET -scQueryString (_SC-BuildQueryString -queryJSON $dict)
 }
 
@@ -411,10 +466,10 @@ function SC-Get-Repositories() {
     #>
     param (
         #`id` always comes back
+        [ValidateSet("All","Local","Remote","Offline")]
+          [string]$type = 'All',
         [switch]$name,
         [switch]$description,
-        [ValidateSet("All","Local","Remote","Offline")]
-          [string]$type,
         [switch]$dataFormat,
         [switch]$vulnCount,
         [switch]$remoteID,
@@ -430,24 +485,17 @@ function SC-Get-Repositories() {
         [switch]$remoteSchedule
     )
     # Build the query dict
-    $dict = @{ "fields" = "id" }
+    $dict = @{
+        "type" = $type;
+        "fields" = "id"
+    }
+    # Dynamically read the passed switches for the returned instead of a seperate line for each
+    foreach ($key in $PSBoundParameters.Keys) {
+        if ($key -ne 'type') {
+            $dict.Set_Item("fields", $dict.Get_Item("fields") + ",$key")
+        }
+    }
     # Set all the fields, if they were requested to be set...
-    if ($name) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",name")}
-    if ($description) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",description")}
-    if ($type) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",type")}
-    if ($dataFormat) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",dataFormat")}
-    if ($vulnCount) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",vulnCount")}
-    if ($remoteID) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",remoteID")}
-    if ($remoteIP) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",remoteIP")}
-    if ($running) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",running")}
-    if ($downloadFormat) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",downloadFormat")}
-    if ($lastSyncTime) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",lastSyncTime")}
-    if ($lastVulnUpdate) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",lastVulnUpdate")}
-    if ($createdTime) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",createdTime")}
-    if ($modifiedTime) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",modifiedTime")}
-    if ($transfer) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",transfer")}
-    if ($typeFields) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",typeFields")}
-    if ($remoteSchedule) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",remoteSchedule")}
 
     return SC-Connect -scResource repository -scHTTPMethod GET -scQueryString (_SC-BuildQueryString -queryJSON $dict)
 }
@@ -459,14 +507,15 @@ function SC-Get-RepositoryIPs() {
         containing the repository ID number, the name of said repository, and the IPs able to be imported to
         the aforementioned repository.
     #>
-    SC-Get-Repositories -type All -name -typeFields
-    $ret = ($scResponse.response | 
-                Select-Object @{Name='repo_id';Expression={$_.id}},
-                              @{Name='repo_name';Expression={$_.name}},
-                              @{Name='ip_range';Expression={$_.typeFields.ipRange}}
-            )
-    return $ret
+    $ret = SC-Get-Repositories -type All -name -typeFields
+    return ($ret.response | Select-Object @{Name='repo_id';Expression={$_.id}},
+                                          @{Name='repo_name';Expression={$_.name}},
+                                          @{Name='ip_range';Expression={$_.typeFields.ipRange}}
+    )
 }
+
+
+
 
 
 function SC-Get-ScanZone() {
@@ -486,16 +535,11 @@ function SC-Get-ScanZone() {
         [switch]$scanners
     )
     $dict = @{ "fields" = "id" }
-    # Set all the fields, if they were requested to be set...
-    if ($name) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",name")}
-    if ($description) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",description")}
-    if ($ipList) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",ipList")}
-    if ($createdTime) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",createdTime")}
-    if ($modifiedTime) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",modifiedTime")}
-    if ($organizations) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",organizations")}
-    if ($activeScanners) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",activeScanners")}
-    if ($totalScanners) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",totalScanners")}
-    if ($scanners) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",scanners")}
+    # Dynamically read the passed switches for the returned instead of a seperate line for each
+    foreach ($key in $PSBoundParameters.Keys) {
+        # Load the switch name into the fields
+        $dict.Set_Item("fields", $dict.Get_Item("fields") + ",$key")
+    }
 
     # Send the request...
     return SC-Connect -scResource zone -scHTTPMethod GET -scQueryString (_SC-BuildQueryString -queryJSON $dict)
@@ -537,7 +581,6 @@ function SC-Get-ScanInfo() {
           [int]$id = 0,
         [ValidateSet("usable","managable","usable,managable")]
           [string]$filter = "usable,managable",
-        [switch]$getAllInfo,
         [switch]$name,
         [switch]$description,
         [switch]$status,
@@ -567,47 +610,18 @@ function SC-Get-ScanInfo() {
         [switch]$policyPrefs,
         [switch]$maxScanTime
     )
-    # Check if we're getting all info (set all switches to True)
-    if ($getAllInfo) {
-        $name = $description = $status = $ipList = $type = $policy = $plugin = $repository `
-            = $zone = $dhcpTracking = $classifyMitigatedAge = $emailOnLaunch = $emailOnFinish `
-            = $timeoutAction = $scanningVirtualHosts = $rolloverType = $createdTime = $modifiedTime `
-            = $ownerGroup = $creator = $owner = $reports = $assets = $credentials = $numDependents `
-            = $schedule = $policyPrefs = $maxScanTime = $true
-    }
     # Build the query dict
     $dict = @{
         "fields" = "id";
         "filter" = $filter
     }
-    if ($name) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",name")}
-    if ($description) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",description")}
-    if ($status) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",status")}
-    if ($ipList) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",ipList")}
-    if ($type) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",type")}
-    if ($policy) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",policy")}
-    if ($plugin) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",plugin")}
-    if ($repository) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",repository")}
-    if ($zone) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",zone")}
-    if ($dhcpTracking) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",dhcpTracking")}
-    if ($classifyMitigatedAge) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",classifyMitigatedAge")}
-    if ($emailOnLaunch) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",emailOnLaunch")}
-    if ($emailOnFinish) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",emailOnFinish")}
-    if ($timeoutAction) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",timeoutAction")}
-    if ($scanningVirtualHosts) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",scanningVirtualHosts")}
-    if ($rolloverType) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",rolloverType")}
-    if ($createdTime) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",createdTime")}
-    if ($modifiedTime) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",modifiedTime")}
-    if ($ownerGroup) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",ownerGroup")}
-    if ($creator) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",creator")}
-    if ($owner) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",owner")}
-    if ($reports) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",reports")}
-    if ($assets) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",assets")}
-    if ($credentials) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",credentials")}
-    if ($numDependents) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",numDependents")}
-    if ($schedule) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",schedule")}
-    if ($policyPrefs) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",policyPrefs")}
-    if ($maxScanTime) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",maxScanTime")}
+    # Dynamically read the passed switches for the returned instead of a seperate line for each
+    foreach ($key in $PSBoundParameters.Keys) {
+        # Load the switch name into the `fields` (excluding non-switches)
+        if ($key -notin @('id','filter')) {
+            $dict.Set_Item("fields", $dict.Get_Item("fields") + ",$key")
+        }
+    }
     
     if (!$id) {
         # ``$id`` is zero (true), so we want to get all scans.
@@ -963,6 +977,7 @@ function SC-Upload-File() {
         https://support.tenable.com/support-center/cerberus-support-center/includes/widgets/sc_api/File.html
     #>
     param(
+        [Parameter(Mandatory=$true)]
         $filePath
     )
     Write-Host $filePath
@@ -995,8 +1010,10 @@ function SC-Import-NessusResults() {
         Requires the addition of the "Content-Type:application/json" header.
     #>
     param(
-        [string]$generatedFilename,
-        [ValidatePattern("^\d+")]
+        [Parameter(Mandatory=$true)]
+          [string]$generatedFilename,
+        [Parameter(Mandatory=$true)]
+        [ValidateScript({$_ -gt 0})]
           [int]$repositoryID = 7
     )
     # Build the query according to what was observed in-browser
@@ -1047,25 +1064,12 @@ function SC-Get-AssetList () {
         [switch]$viewableIPs
     )
     $dict = @{ "fields" = "id" }
-    if ($name) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",name")}
-    if ($description) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",description")}
-    if ($status) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",status")}
-    if ($creator) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",creator")}
-    if ($owner) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",owner")}
-    if ($ownerGroup) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",ownerGroup")}
-    if ($targetGroup) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",targetGroup")}
-    if ($groups) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",groups")}
-    if ($type) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",type")}
-    if ($tags) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",tags")}
-    if ($context) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",context")}
-    if ($template) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",template")}
-    if ($createdTime) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",createdTime")}
-    if ($modifiedTime) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",modifiedTime")}
-    if ($repositories) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",repositories")}
-    if ($ipCount) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",ipCount")}
-    if ($assetDataFields) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",assetDataFields")}
-    if ($typeFields) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",typeFields")}
-    if ($viewableIPs) {$dict.Set_Item("fields", $dict.Get_Item("fields") + ",viewableIPs")}
+    # Dynamically read the passed switches for the returned instead of a seperate line for each
+    foreach ($key in $PSBoundParameters.Keys) {
+        if ($key -notin @('id')) {
+            $dict.Set_Item("fields", $dict.Get_Item("fields") + ",$key")
+        }
+    }
 
     if ($id -eq 0) {
         # Default case for when we want to retrieve all asset lists from the SecurityCenter
