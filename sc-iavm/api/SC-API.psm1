@@ -47,10 +47,16 @@ $Global:scToken_70DBAC67 = ""
 $Global:scSession_70DBAC67 = $null
 
 
-function Convert-UnixEpochTimestamp() {
+function Get-DateTimeFromUnixEpoch() {
     <# Make a Unix epoch'd timestamp human readable. #>
-    param([int]$timestamp)
+    param([int64]$timestamp)
     return (Get-Date -Year 1970 -Month 1 -Day 1 -Hour 0 -Minute 0).AddSeconds($timestamp)
+}
+
+
+function Get-UnixEpochFromDateTime() {
+    param([DateTime]$datetime)
+    return [int64]((New-TimeSpan -Start (Get-Date -Date "01/01/1970") -End $datetime).TotalSeconds)
 }
 
 
@@ -117,7 +123,8 @@ function _SC-Authenticate-PKI() {
 
 
 function _SC-Authenticate-UsernamePassword() {
-    <# Attempt authentication with username/password
+    <#
+        Attempt authentication with a username and password.
     #>
     param(
         [Parameter(Mandatory=$true)]
@@ -172,10 +179,44 @@ function SC-Connect {
     param(
         <# What are we trying to accomplish/get via the API? #>
         [Parameter(Mandatory=$true)]
-        [ValidateSet("auditFile", "config", "credential", "currentUser", "currentOrganization", "feed", "file/upload",
-        "group", "ipInfo", "lce", "lce/eventTypes", "scanner", "organization", "passivescanner", "plugin", "pluginFamily",
-        "query", "repository", "role", "scan", "policy", "scanResult", "zone", "status", "system", "ticket", "token",
-        "reportDefinition", "scanResult/import", "analysis", "asset", "repository/-ID-/ipInfo")]
+        [ValidateSet(
+            "analysis",
+            "asset",
+            "asset/-ID-/export",
+            "auditFile",
+            "config",
+            "credential",
+            "currentOrganization",
+            "currentUser",
+            "feed",
+            "file/upload",
+            "group",
+            "ipInfo",
+            "lce",
+            "lce/eventTypes",
+            "organization",
+            "passivescanner",
+            "plugin",
+            "pluginFamily",
+            "policy",
+            "policy/-ID-/export",
+            "query",
+            "reportDefinition",
+            "reportDefinition/-ID-/export",
+            "repository",
+            "repository/-ID-/ipInfo",
+            "role",
+            "scan",
+            "scanner",
+            "scanResult",
+            "scanResult/import",
+            "status",
+            "system",
+            "ticket",
+            "token",
+            "user",
+            "zone"
+        )]
           [string]$scResource,
         [ValidatePattern("^\d+$")]
           [int]$scResourceID,
@@ -193,6 +234,7 @@ function SC-Connect {
         Undocumented scResource values:
         - reportDefinition
         - scanResult/import
+        - reportDefinition/<reportID>/export
     #>
 
     # Depth at 10 because the incoming dict might be more than 2 levels deep
@@ -515,9 +557,6 @@ function SC-Get-RepositoryIPs() {
 }
 
 
-
-
-
 function SC-Get-ScanZone() {
     <#
         https://support.tenable.com/support-center/cerberus-support-center/includes/widgets/sc_api/Scan-Zone.html
@@ -555,7 +594,8 @@ function SC-Delete-Scan() {
         Returns: Boolean $true upon success, otherwise Boolean $false.
     #>
     param(
-        [ValidatePattern("^\d+$")]
+        [Parameter(Mandatory=$true)]
+        [ValidateScript({$_ -ge 0})]
           [int]$scan_id
     )
     $resp = SC-Connect -scResource scan -scResourceID $scan_id -scHTTPMethod DELETE
@@ -947,7 +987,7 @@ function SC-Edit-Scan() {
     }
 
     #Write-Host ($dict | ConvertTo-Json -Depth 10 -Compress)
-    SC-Connect -scResource scan -scResourceID $id -scHTTPMethod PATCH -scJSONInput $dict
+    return SC-Connect -scResource scan -scResourceID $id -scHTTPMethod PATCH -scJSONInput $dict
 }
 
 
@@ -980,7 +1020,7 @@ function SC-Upload-File() {
         [Parameter(Mandatory=$true)]
         $filePath
     )
-    Write-Host $filePath
+    # Write-Host $filePath
     # Read in the entire file
     $fileBin = [IO.File]::ReadAllBytes($filePath)
     # Safely encode the file for transfer
@@ -1034,7 +1074,22 @@ function SC-Import-NessusResults() {
         "timeoutAction" = "import";
     }
     # Send the import request
-    SC-Connect -scResource scanResult/import -scHTTPMethod POST -scJSONInput $dict -scAdditionalHeadersDict @{"Content-Type" = "application/json"}
+    return SC-Connect -scResource scanResult/import -scHTTPMethod POST -scJSONInput $dict -scAdditionalHeadersDict @{"Content-Type" = "application/json"}
+}
+
+
+function SC-Get-FeedInformation() {
+    <#
+        Gets the status of feed uploads (last update time, is it stale, and is an update running).
+        Displays info for all feeds (sc, active, passive, lce).
+
+        Parameters: None
+
+        Returns: As it says in the function description.
+
+        https://docs.tenable.com/sccv/api/Feed.html
+    #>
+    return SC-Connect -scResource feed -scHTTPMethod GET
 }
 
 
@@ -1078,5 +1133,347 @@ function SC-Get-AssetList () {
     else {
         # We only want a single asset list as identified by `$id`.
         return SC-Connect -scResourceID $id -scResource asset -scHTTPMethod GET -scQueryString (_SC-BuildQueryString -queryJSON $dict)
+    }
+}
+
+
+function SC-Export-ReportDefinition() {
+    <#
+        Exports the report definition for a specified report ID, optionally maintaining references to SecurityCenter specific objects,
+        stripping them, or inserting placeholders.
+
+        Rest endpoint: /rest/reportDefinition/<reportID>/export
+
+        Note: Undocumented endpoint, either in the SCCV or Cerberus variant of the API links
+
+        Parameters:
+          - reportID: The report ID of the report to be exported, as seen in the /#reports URI if visiting from the Web UI.
+          - type: One of:
+            > full: Maintains the references, if any, exactly as defined in the SecurityCenter. Suitable to import back into the same
+                SecurityCenter without issues.
+            > placeholder: Strips SecurityCenter specific references (repoID, assetIDs, etc.), and inserts placeholder information
+                into the report template's definition.
+            > cleansed: Fully strips references, leaving no placeholders.
+
+        Returns: An XML file with the definition of the report as specified by ``reportID``, and obeying the ``type`` selection.
+
+        # TODO: Verify this returns a raw XML file without being buried in the .response
+    #>
+    param(
+        [Parameter(Mandatory=$true)]
+        [ValidateScript({$_ -ge 0})]
+          [int]$reportID,
+        [Parameter(Mandatory=$true)]
+        [ValidateSet("full", "placeholder","cleansed")]
+          [string]$type
+    )
+    $dict = @{ "exportType" = $type }
+
+    return SC-Connect -scResource reportDefinition/-ID-/export -scResourceID $reportID -scHTTPMethod POST -scJSONInput $dict
+}
+
+
+function SC-Export-AssetList() {
+    <#
+        Exports the Asset associated with ``assetListID`` as plain text XML.
+
+        Parameters: assetListID: The asset list's ID to export.
+
+        Returns: An XML copy of the asset list, suitable for importing to the SecurityCenter.
+
+        Note: Documented in the Cerberus-variant API reference, not the SCCV
+        URI: https://support.tenable.com/support-center/cerberus-support-center/includes/widgets/sc_api/Asset.html
+        Endpoint: /asset/{id}/export
+    #>
+    param(
+        [Parameter(Mandatory=$true)]
+        [ValidateScript({$_ -ge 0})]
+          [int]$assetListID
+    )
+    return SC-Connect -scResource asset/-ID-/export -scResourceID $assetListID -scHTTPMethod GET
+}
+
+
+function SC-Get-User() {
+    <#
+        Retrieves user information from the SecurityCenter, returning the specified fields.
+    #>
+    param(
+        [switch]$username,
+        [switch]$firstname,
+        [switch]$lastname,
+        [switch]$status,
+        [switch]$role,
+        [switch]$title,
+        [switch]$email,
+        [switch]$address,
+        [switch]$city,
+        [switch]$state,
+        [switch]$country,
+        [switch]$phone,
+        [switch]$fax,
+        [switch]$createdTime,
+        [switch]$modifiedTime,
+        [switch]$lastLogin,
+        [switch]$lastLoginIP,
+        [switch]$mustChangePassword,
+        [switch]$locked,
+        [switch]$failedLogins,
+        [switch]$authType,
+        [switch]$fingerprint,
+        [switch]$password,
+        [switch]$description,
+        [switch]$canUse,
+        [switch]$canManage,
+        [switch]$managedUsersGroups,
+        [switch]$managedObjectsGroups,
+        [switch]$preferences,
+        [switch]$ldaps,
+        [switch]$ldapUsername
+    )
+    $dict = @{ "fields" = "id" }
+    # Dynamically read the passed switches for the returned instead of a seperate line for each
+    foreach ($key in $PSBoundParameters.Keys) {
+        if ($key -notin @('id')) {
+            $dict.Set_Item("fields", $dict.Get_Item("fields") + ",$key")
+        }
+    }
+
+    return SC-Connect -scResource user -scHTTPMethod GET -scQueryString (_SC-BuildQueryString $dict)
+}
+
+
+function SC-Export-ScanPolicy() {
+    <#
+        Exports the scan policy as identified by ``scanPolicyID` and returns the XML representation of the policy,
+        which can then be imported or archived.
+
+        Parameters: scanPolicyID: The ID of the scan policy to export.
+
+        Returns: An XML file representing the specified scan policy.
+
+        Note: Documented in the Cerberus variant of the API, not the SCCV
+        https://support.tenable.com/support-center/cerberus-support-center/includes/widgets/sc_api/Scan-Policy.html
+    #>
+    param(
+        [Parameter(Mandatory=$true)]
+        [ValidateScript({$_ -ge 0})]
+          [int]$scanPolicyID
+    )
+
+    return SC-Connect -scResource policy/-ID-/export -scResourceID $scanPolicyID -scHTTPMethod POST
+}
+
+
+function SC-Get-GroupInformation() {
+    <#
+        Get a list of all groups from SecurityCenter, with the specified information.
+
+        Parameters: See the switches in the param() block.
+
+        Returns: A list of all groups with the specified information.
+
+        https://docs.tenable.com/sccv/api/Group.html
+    #>
+    param(
+        [switch]$name,
+        [switch]$description,
+        [switch]$createdTime,
+        [switch]$modifiedTime,
+        [switch]$lces,
+        [switch]$repositories,
+        [switch]$definingAssets,
+        [switch]$userCount,
+        [switch]$users,
+        [switch]$assets,
+        [switch]$policies,
+        [switch]$queries,
+        [switch]$credentials,
+        [switch]$dashboardTabs,
+        [switch]$arcs,
+        [switch]$auditFiles
+    )
+    $dict = @{ "fields" = "id" }
+    # Dynamically read the passed switches for the returned instead of a seperate line for each
+    foreach ($key in $PSBoundParameters.Keys) {
+        if ($key -notin @('id')) {
+            $dict.Set_Item("fields", $dict.Get_Item("fields") + ",$key")
+        }
+    }
+
+    return SC-Connect -scResource group -scHTTPMethod GET -scQueryString (_SC-BuildQueryString $dict)
+}
+
+
+function SC-Get-RoleInformation() {
+    <#
+        Returns a list of role information with the specified fields being returned.
+
+        Parameters: See the param() block for a full list of switches.
+
+        Returns: As in the function description.
+
+        https://docs.tenable.com/sccv/api/Role.html
+        https://support.tenable.com/support-center/cerberus-support-center/includes/widgets/sc_api/Role.html
+    #>
+    param(
+        [switch]$name,
+        [switch]$description,
+        [switch]$creator,
+        [switch]$createdTime,
+        [switch]$modifiedTime,
+        [switch]$permManageApp,
+        [switch]$permManageGroups,
+        [switch]$permManageRoles,
+        [switch]$permManageImages,
+        [switch]$permManageGroupRelationships,
+        [switch]$permManageBlackoutWindows,
+        [switch]$permManageAttributeSets,
+        [switch]$permCreateTickets,
+        [switch]$permCreateAlerts,
+        [switch]$permCreateAuditFiles,
+        [switch]$permCreateLDAPAssets,
+        [switch]$permCreatePolicies,
+        [switch]$permPurgeTickets,
+        [switch]$permPurgeScanResults,
+        [switch]$permPurgeReportResults,
+        [switch]$permScan,
+        [switch]$permAgentsScan,
+        [switch]$permShareObjects,
+        [switch]$permUpdateFeeds,
+        [switch]$permUploadNessusResults,
+        [switch]$permViewOrgLogs,
+        [switch]$permManageAcceptRiskRules,
+        [switch]$permManageRecastRiskRules,
+        [switch]$organizationCounts
+    )
+    $dict = @{ "fields" = "id" }
+    # Dynamically read the passed switches for the returned instead of a seperate line for each
+    foreach ($key in $PSBoundParameters.Keys) {
+        if ($key -notin @('id')) {
+            $dict.Set_Item("fields", $dict.Get_Item("fields") + ",$key")
+        }
+    }
+
+    return SC-Connect -scResource role -scHTTPMethod GET -scQueryString (_SC-BuildQueryString $dict)
+}
+
+
+function SC-Get-CredentialInformation() {
+    <#
+        Gets a list of all credentials from the SecurityCenter with all specified fields. If ``credentialID`` is provided,
+        only return information for the credential with the ID number ``credentialID``
+
+        Parameters:
+          - credentialID: Optional. If specified, only return information for the credential whose ID number matches
+              the number provided. Integer.
+          - <switches>: See param() block below for information that can be returned.
+    #>
+    param(
+        [ValidateScript({$_ -ge 0})]
+          [int]$credentialID = $null,
+        [switch]$name,
+        [switch]$description,
+        [switch]$type,
+        [switch]$creator,
+        [switch]$target,
+        [switch]$groups,
+        [switch]$typeFields,
+        [switch]$tags,
+        [switch]$createdTime,
+        [switch]$modifiedTime,
+        [switch]$canUse,
+        [switch]$canManage,
+        # Session user role not "1" (Administrator)
+        [switch]$owner,
+        [switch]$ownerGroup,
+        [switch]$targetGroup
+
+    )
+    $dict = @{ "fields" = "id" }
+    # Dynamically read the passed switches for the returned instead of a seperate line for each
+    foreach ($key in $PSBoundParameters.Keys) {
+        if ($key -notin @('credentialID')) {
+            $dict.Set_Item("fields", $dict.Get_Item("fields") + ",$key")
+        }
+    }
+
+    if ($credentialID -eq $null) {
+        $resp = SC-Connect -scResource credential -scHTTPMethod GET -scQueryString (_SC-BuildQueryString $dict)
+    }
+    else {
+        # Only a specified credential is being requested.
+        $resp = SC-Connect -scResource credential -scResourceID $credentialID -scHTTPMethod GET -scQueryString (_SC-BuildQueryString $dict)
+    }
+    return $resp
+}
+
+
+function SC-Get-ScanResults() {
+    <#
+        Gets the list of Scan Results. The `progress` of a scan can be returned if a ``scanResultID`` is provided.
+
+        Parameters:
+          - scanResultID: The ID of a scan result entry. Required to return the `progress` of the scan. Optional. Int.
+          - <switches>: See param() block below for information that can be returned.
+
+        Returns: A list of all scans, or a single entry with the requested information
+    #>
+    param(
+        [ValidateScript({$_ -ge 0})]
+          [int]$scanResultID = $null,
+        [ValidateSet("usable", "manageable", "usable,managable")]
+          [string]$filterAccess = "usable,managable",
+        [ValidateSet("running", "completed", "running,completed")]
+          [string]$filterStatus = "running,completed",
+        [switch]$name,
+        [switch]$description,
+        [switch]$status,
+        [switch]$initiator,
+        [switch]$owner,
+        [switch]$ownerGroup,
+        [switch]$repository,
+        [switch]$scan,
+        [switch]$job,
+        [switch]$details,
+        [switch]$importStatus,
+        [switch]$importStart,
+        [switch]$importFinish,
+        [switch]$importDuration,
+        [switch]$downloadAvailable,
+        [switch]$downloadFormat,
+        [switch]$dataFormat,
+        [switch]$resultType,
+        [switch]$resultSource,
+        [switch]$running,
+        [switch]$errorDetails,
+        [switch]$importErrorDetails,
+        [switch]$totalIPs,
+        [switch]$scannedIPs,
+        [switch]$startTime,
+        [switch]$finishTime,
+        [switch]$scanDuration,
+        [switch]$completedIPs,
+        [switch]$completedChecks,
+        [switch]$totalChecks,
+        [switch]$progress
+    )
+    $filter = $filterAccess + ',' + $filterStatus
+
+    $dict = @{ "fields" = "id";
+               "filter" = $filter
+    }
+    # Dynamically read the passed switches for the returned instead of a seperate line for each
+    foreach ($key in $PSBoundParameters.Keys) {
+        if ($key -notin @('scanResultID', 'filterAccess', 'filterStatus')) {
+            $dict.Set_Item("fields", $dict.Get_Item("fields") + ",$key")
+        }
+    }
+
+    if ($scanResultID) {
+        return SC-Connect -scResource scanResult -scResourceID $scanResultID -scHTTPMethod GET -scQueryString (_SC-BuildQueryString $dict)
+    }
+    else {
+        return SC-Connect -scResource scanResult -scHTTPMethod GET -scQueryString (_SC-BuildQueryString $dict)
     }
 }
