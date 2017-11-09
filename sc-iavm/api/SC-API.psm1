@@ -1013,7 +1013,10 @@ function SC-Purge-RolloverScans() {
 
 function SC-Upload-File() {
     <#
-        A semi-loosely documented endpoint. It's documented, just not for all use-cases.
+        A semi-loosely documented endpoint. It's documented, just not for all use-cases. Designed currently
+        to import Nessus results. Unsure if it will work as-is to upload other file types.
+
+
         https://support.tenable.com/support-center/cerberus-support-center/includes/widgets/sc_api/File.html
     #>
     param(
@@ -1037,9 +1040,9 @@ function SC-Upload-File() {
     $uploadBody += "----------$boundary--"
     # Add in the additional headers required for this API endpoint
     $additionalHeaders = @{"Content-Type"="multipart/form-data; boundary=--------$boundary"}
-    SC-Connect -scResource file/upload -scHTTPMethod POST -scAdditionalHeadersDict $additionalHeaders -scRawRequestPayload $uploadBody
+    $resp = SC-Connect -scResource file/upload -scHTTPMethod POST -scAdditionalHeadersDict $additionalHeaders -scRawRequestPayload $uploadBody
     # The name of the file on the SecurityCenter server to be used for other actions (such as importing)
-    return $script:scResponse.response.filename
+    return $resp.response.filename
 }
 
 
