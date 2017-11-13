@@ -1,36 +1,3 @@
-<#"" TODO
-Functions to transfer:
-a) SC-BuildQueryString -- DONE/TESTED as ``_SC-BuildQueryString``
-b) SC-Connect -- DONE/TESTED
-c) SC-Authenticate -- DONE/TESTED(PKI) (rewritten)
-d) SC-Authenticate-PKI -- DONE/TESTED as ``_SC-Authenticate-PKI``
-e) SC-Authenticate-UsernamePassword -- DONE as ``_SC-Authenticate-UsernamePassword``
-f) SC-Logout -- DONE/TESTED
-g) SC-Get-Plugins -- DONE
-h) SC-Delete-Scan -- DONE/TESTED
-I) SC-Get-RolloverScans -- DONE/TESTED
-j) SC-Purge-RolloverScans -- DONE/TESTED
-k) SC-Get-Status -- DONE
-l) SC-Get-Scans -- DONE/TESTED, renamed as ``SC-Get-ScanInfo``
-m) SC-Edit-Scan --DONE
-n) SC-Get-ScanPolicy --DONE
-o) SC-Get-FullScanInformation - Implemented as a switch in SC-Get-ScanInfo
-p) SC-Get-Repositories --DONE
-q) SC-Get-RepositoryIPs -- DONE
-r) SC-Get-ScanZone --DONE
-s) SC-Upload-File --DONE
-t) SC-Import-Nessus-Results -- DONE as ``SC-Import-NessusResults``
-u) SC-Get-DetailedVulnerabilities
-v) SC-Get-Asset-List -- DONE as ``SC-Get-AssetList``
-w) SC-Patch-Asset-DNSList
-
-Functions not transferring:
-- function Read-ConfigFile
-- function SC-GetCredentials
-- SC-Get-ReportDefinition
-
-""#>
-
 <#
 API Module for SecurityCenter 5.x
 Tenable API References: 
@@ -61,10 +28,24 @@ function Get-UnixEpochFromDateTime() {
 
 
 function _SC-BuildQueryString {
-    param($queryJSON);
+    <#
+        Build a valid query string from an incoming dictionary @{} of keys and values.
+
+        Parameters:
+          - queryDict: A dictionary (hash table) to be converted to a URI query string fragment.
+              Values within queryDict are URLEncoded.
+
+        Returns: A URLEncoded query string.
+
+        $example = {
+            "id" = 2;
+            "filters" = "running"
+        }
+    #>
+    param($queryDict);
 
     $reqStr = "?"
-    foreach ($Local:item in $queryJSON.GetEnumerator()) {
+    foreach ($Local:item in $queryDict.GetEnumerator()) {
         $reqStr += $Local:item.Name + '=' + [System.Web.HttpUtility]::UrlEncode($Local:item.Value) + '&'
     }
     $reqStr = $reqStr.TrimEnd('&')
@@ -166,8 +147,8 @@ function SC-Connect {
           - scResourceID: Optional. Specifically identified an object in the SecurityCenter, such as
               a specific scan, or user account to perform an action on. Must be a positive number
           - scHTTPMethod: Required. The HTTP Method to use when performing this action.
-          - scQueryString: Optional. Used with HTTP GET requests. Built via ``_SC-BuildQueryString`` (or
-              other syntactically valid query string mechanism).
+          - scQueryStringDict: Optional. Used with HTTP GET requests. A dictionary @{} of Key-Value pairs to be translated
+              to a query string to be appended to the REST endpoint URI.
           - scJSONInput: Optional. A dict @{} of items to be converted to JSON inside this function.
           - scAdditionalHeadersDict: Optional. Required when using certain API endpoints, such as ``file/upload``.
           - scRawRequestPayload: Optional. Required for use with ``file/upload``.
@@ -224,7 +205,7 @@ function SC-Connect {
         [Parameter(Mandatory=$true)]
         [ValidateSet("GET","POST","PATCH","DELETE")]
           [string]$scHTTPMethod,
-        $scQueryString,
+        $scQueryStringDict,
         $scJSONInput,
         $scAdditionalHeadersDict = @{},
         $scRawRequestPayload,
@@ -236,6 +217,8 @@ function SC-Connect {
         - scanResult/import
         - reportDefinition/<reportID>/export
     #>
+
+    $scQueryString = _SC-BuildQueryString -queryDict $scQueryStringDict
 
     # Depth at 10 because the incoming dict might be more than 2 levels deep
     $json = $scJSONInput | ConvertTo-Json -Compress -Depth 10
@@ -395,7 +378,7 @@ function SC-Get-Plugins() {
         $dict.Add("value",$value)
     }
 
-    $resp = SC-Connect -scResource "plugin" -scHTTPMethod GET -scQueryString (SC-BuildQueryString -queryJSON $dict)
+    $resp = SC-Connect -scResource "plugin" -scHTTPMethod GET -scQueryStringDict $dict
     return $resp.response
 }
 
@@ -454,7 +437,7 @@ function SC-Get-PluginInformation() {
         }
     }
 
-    return SC-Connect -scResource plugin -scResourceID $pluginID -scHTTPMethod GET -scQueryString (_SC-BuildQueryString $dict)
+    return SC-Connect -scResource plugin -scResourceID $pluginID -scHTTPMethod GET -scQueryStringDict $dict
 }
 
 
@@ -498,7 +481,7 @@ function SC-Get-ScanPolicy() {
         $dict.Set_Item("fields", $dict.Get_Item("fields") + ",name,description,status")
     }
 
-    return SC-Connect -scResource policy -scHTTPMethod GET -scQueryString (_SC-BuildQueryString -queryJSON $dict)
+    return SC-Connect -scResource policy -scHTTPMethod GET -scQueryStringDict $dict
 }
 
 
@@ -539,7 +522,7 @@ function SC-Get-Repositories() {
     }
     # Set all the fields, if they were requested to be set...
 
-    return SC-Connect -scResource repository -scHTTPMethod GET -scQueryString (_SC-BuildQueryString -queryJSON $dict)
+    return SC-Connect -scResource repository -scHTTPMethod GET -scQueryStringDict $dict
 }
 
 
@@ -581,7 +564,7 @@ function SC-Get-ScanZone() {
     }
 
     # Send the request...
-    return SC-Connect -scResource zone -scHTTPMethod GET -scQueryString (_SC-BuildQueryString -queryJSON $dict)
+    return SC-Connect -scResource zone -scHTTPMethod GET -scQueryStringDict $dict
 }
 
 
@@ -665,11 +648,11 @@ function SC-Get-ScanInfo() {
     
     if (!$id) {
         # ``$id`` is zero (true), so we want to get all scans.
-        return SC-Connect -scResource scan -scHTTPMethod GET -scQueryString (_SC-BuildQueryString $dict)
+        return SC-Connect -scResource scan -scHTTPMethod GET -scQueryStringDict $dict
     }
     else {
         # ``$id`` has been set, so we want a specific scan's information
-        return SC-Connect -scResource scan -scResourceID $id -scHTTPMethod GET -scQueryString (_SC-BuildQueryString $dict)
+        return SC-Connect -scResource scan -scResourceID $id -scHTTPMethod GET -scQueryStringDict $dict
     }
 }
 
@@ -1131,11 +1114,11 @@ function SC-Get-AssetList () {
 
     if ($id -eq 0) {
         # Default case for when we want to retrieve all asset lists from the SecurityCenter
-        return SC-Connect -scResource asset -scHTTPMethod GET -scQueryString (_SC-BuildQueryString -queryJSON $dict)
+        return SC-Connect -scResource asset -scHTTPMethod GET -scQueryStringDict $dict
     }
     else {
         # We only want a single asset list as identified by `$id`.
-        return SC-Connect -scResourceID $id -scResource asset -scHTTPMethod GET -scQueryString (_SC-BuildQueryString -queryJSON $dict)
+        return SC-Connect -scResourceID $id -scResource asset -scHTTPMethod GET -scQueryStringDict $dict
     }
 }
 
@@ -1242,7 +1225,7 @@ function SC-Get-User() {
         }
     }
 
-    return SC-Connect -scResource user -scHTTPMethod GET -scQueryString (_SC-BuildQueryString $dict)
+    return SC-Connect -scResource user -scHTTPMethod GET -scQueryStringDict $dict
 }
 
 
@@ -1304,7 +1287,7 @@ function SC-Get-GroupInformation() {
         }
     }
 
-    return SC-Connect -scResource group -scHTTPMethod GET -scQueryString (_SC-BuildQueryString $dict)
+    return SC-Connect -scResource group -scHTTPMethod GET -scQueryStringDict $dict
 }
 
 
@@ -1358,7 +1341,7 @@ function SC-Get-RoleInformation() {
         }
     }
 
-    return SC-Connect -scResource role -scHTTPMethod GET -scQueryString (_SC-BuildQueryString $dict)
+    return SC-Connect -scResource role -scHTTPMethod GET -scQueryStringDict $dict
 }
 
 
@@ -1402,11 +1385,11 @@ function SC-Get-CredentialInformation() {
     }
 
     if ($credentialID -eq $null) {
-        $resp = SC-Connect -scResource credential -scHTTPMethod GET -scQueryString (_SC-BuildQueryString $dict)
+        $resp = SC-Connect -scResource credential -scHTTPMethod GET -scQueryStringDict $dict
     }
     else {
         # Only a specified credential is being requested.
-        $resp = SC-Connect -scResource credential -scResourceID $credentialID -scHTTPMethod GET -scQueryString (_SC-BuildQueryString $dict)
+        $resp = SC-Connect -scResource credential -scResourceID $credentialID -scHTTPMethod GET -scQueryStringDict $dict
     }
     return $resp
 }
@@ -1474,9 +1457,9 @@ function SC-Get-ScanResults() {
     }
 
     if ($scanResultID) {
-        return SC-Connect -scResource scanResult -scResourceID $scanResultID -scHTTPMethod GET -scQueryString (_SC-BuildQueryString $dict)
+        return SC-Connect -scResource scanResult -scResourceID $scanResultID -scHTTPMethod GET -scQueryStringDict $dict
     }
     else {
-        return SC-Connect -scResource scanResult -scHTTPMethod GET -scQueryString (_SC-BuildQueryString $dict)
+        return SC-Connect -scResource scanResult -scHTTPMethod GET -scQueryStringDict $dict
     }
 }
