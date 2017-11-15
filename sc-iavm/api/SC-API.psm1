@@ -99,7 +99,7 @@ function _SC-Authenticate-PKI() {
         [Parameter(Mandatory=$true)]
           [string]$pkiCertThumbprint
     )
-    SC-Connect -scResource "system" -scHTTPMethod GET -pkiCertThumbprint $pkiCertThumbprint
+    SC-Connect -scResource system -scHTTPMethod GET -pkiCertThumbprint $pkiCertThumbprint
 }
 
 
@@ -307,7 +307,7 @@ function SC-Connect {
 
 
 function SC-Logout {
-    SC-Connect -scResource "token" -scHTTPMethod DELETE
+    SC-Connect -scResource token -scHTTPMethod DELETE
     # We're trying to log out here; either there will be an issue, or it will succeed. Clear token either way.
     $Global:scToken_70DBAC67 = ""
 }
@@ -378,7 +378,7 @@ function SC-Get-Plugins() {
         $dict.Add("value",$value)
     }
 
-    $resp = SC-Connect -scResource "plugin" -scHTTPMethod GET -scQueryStringDict $dict
+    $resp = SC-Connect -scResource plugin -scHTTPMethod GET -scQueryStringDict $dict
     return $resp.response
 }
 
