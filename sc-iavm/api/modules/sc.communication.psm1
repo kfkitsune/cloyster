@@ -214,7 +214,9 @@ function SC-Connect {
         - reportDefinition/<reportID>/export
     #>
 
-    $scQueryString = _SC-BuildQueryString -queryDict $scQueryStringDict
+    if ($scQueryStringDict) {
+        $scQueryString = _SC-BuildQueryString -queryDict $scQueryStringDict
+    }
 
     # Depth at 10 because the incoming dict might be more than 2 levels deep
     $json = $scJSONInput | ConvertTo-Json -Compress -Depth 10
@@ -245,7 +247,7 @@ function SC-Connect {
         else { $Local:tmpUri = $scURI + $scResource }
         
         if ($scResource -eq "file/upload") {
-            $scResponse = (Invoke-RestMethod -Verbose -Uri $Local:tmpUri -Method POST -Body $scRawRequestPayload -WebSession $Global:scSession_70DBAC67 -TimeoutSec 180 -Headers $http_headers);
+            $scResponse = (Invoke-RestMethod -Uri $Local:tmpUri -Method POST -Body $scRawRequestPayload -WebSession $Global:scSession_70DBAC67 -TimeoutSec 180 -Headers $http_headers);
         }
         elseif ($scResource -eq "token") {
             # Handle POST against ``/token`` resource (AKA, Get a token)
@@ -271,7 +273,7 @@ function SC-Connect {
             $scResponse = (Invoke-RestMethod -Uri $Local:tmpUri -Method GET -CertificateThumbprint $pkiCertThumbprint -SessionVariable scSession -TimeoutSec 180 -Headers $http_headers);
         }
         else {
-            $scResponse = (Invoke-RestMethod -Verbose -Uri $Local:tmpUri -Method GET -WebSession $Global:scSession_70DBAC67 -TimeoutSec 180 -Headers $http_headers);
+            $scResponse = (Invoke-RestMethod -Uri $Local:tmpUri -Method GET -WebSession $Global:scSession_70DBAC67 -TimeoutSec 180 -Headers $http_headers);
         }
     }
     elseif ($scHTTPMethod -eq "DELETE") {
@@ -285,8 +287,8 @@ function SC-Connect {
         throw [System.NotImplementedException]
     }
 
-    Write-Host("Received: " + $scResponse)
-    Write-Host(">>RESPONSE CONTENTS<< ::: " + $scResponse.response)
+    # Write-Host("Received: " + $scResponse)
+    # Write-Host(">>RESPONSE CONTENTS<< ::: " + $scResponse.response)
     if ($scResource -in ("token", "system")) {
         # Store the token
         $Global:scToken_70DBAC67 = $scResponse.response.token;
