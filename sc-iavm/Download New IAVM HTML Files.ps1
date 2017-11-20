@@ -4,7 +4,7 @@ param(
 )
 
 try {  ### Begin module import block ###
-    Import-Module $env:USERPROFILE\Documents\AuthScripts\Modules\KFK-CommonFunctions.psm1 -Function ("Invoke-CertificateChooser") -ErrorAction Stop
+    Import-Module .\modules\KFK-CommonFunctions.psm1 -Function ("Invoke-CertificateChooser") -ErrorAction Stop
 }
 catch [System.IO.FileNotFoundException] {
     Write-Host -ForegroundColor Red "Unable to load required module... terminating execution..."
@@ -19,7 +19,7 @@ $curDate = Get-Date -UFormat "%Y%m%d"
 $XMLDownloadURI = "/iavm/iavmnotice/batchdownload.zip?includeAlert=false&includeNonActive=false&includeBulletin=false&iavmState=FINAL&includeTechAdvisory=false"
 $IAVMHTMLDownloadURI = "/iavm/services/notices/FOOBARBAZ.htm"  # Replace FOOBARBAZ w/ID
 $EULAWarningBanner = ""
-$configFileName = '.\downloadIAVM-HTMLFiles.conf'
+$configFileName = '.\iavmDownload.conf'
 $iavmFilenames = @{}
 $externalConfig = $true
 
