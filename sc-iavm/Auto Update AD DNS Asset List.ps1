@@ -57,6 +57,7 @@ function Read-ConfigFile {
             $input = Read-Host -Prompt "Provide the SecurityCenter URI, no trailing slash"
             if (($input -like "https://*") -and ($input -notlike "https://*/")) {
                 $script:uri = $input
+                @{ "uri" = $script:uri } | ConvertTo-Json | Out-File -FilePath .\sc.conf
             }
         }
     }

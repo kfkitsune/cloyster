@@ -258,7 +258,7 @@ function SC-Connect {
         }
         
     }
-    if ($scHTTPMethod -eq "PATCH") {
+    elseif ($scHTTPMethod -eq "PATCH") {
         if ($scResourceID) { $Local:tmpUri = $scURI + $scResource + '/' + $scResourceID }
         else { $Local:tmpUri = $scURI + $scResource }
 
@@ -283,6 +283,7 @@ function SC-Connect {
         $scResponse = (Invoke-RestMethod -Uri $Local:tmpUri -Method DELETE -WebSession $Global:scSession_70DBAC67 -TimeoutSec 180 -Headers $http_headers);
     }
     else {
+        Write-Host($scHTTPMethod)
         # Catch-all for non-supported HTTP methods
         throw [System.NotImplementedException]
     }
