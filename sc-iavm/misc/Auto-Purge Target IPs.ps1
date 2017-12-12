@@ -11,8 +11,13 @@
 #>
 
 try {  ### Begin module import block ###
-    Import-Module .\modules\sc.api.core.psm1 -ErrorAction Stop -DisableNameChecking
-    Import-Module .\modules\KFK-CommonFunctions.psm1 -ErrorAction Stop -DisableNameChecking
+    $location_of_modules = ";$env:USERPROFILE\Documents\AuthScripts\modules"
+    if ($env:PSModulePath -notlike ('*' + $location_of_modules + '*')) {
+        $env:PSModulePath += $location_of_modules
+    }
+    # Load the modules
+    Import-Module sc.api.core -ErrorAction Stop -DisableNameChecking
+    Import-Module KFK-CommonFunctions -ErrorAction Stop -DisableNameChecking
 }
 catch [System.IO.FileNotFoundException] {
     Write-Host -ForegroundColor Red "Unable to load required module... terminating execution..."
@@ -36,7 +41,7 @@ function Read-ConfigFile {
             $input = Read-Host -Prompt "Provide the SecurityCenter URI, no trailing slash"
             if (($input -like "https://*") -and ($input -notlike "https://*/")) {
                 $script:uri = $input
-                @{ "uri" = $script:uri } | ConvertTo-Json | Out-File -FilePath foo.foo
+                @{ "uri" = $script:uri } | ConvertTo-Json | Out-File -FilePath $configFileName
             }
         }
     }
@@ -130,11 +135,15 @@ SC-Authenticate -pkiThumbprint $chosenCertThumb -uri $uri | Out-Null
 
 # Get the XML data...
 Write-Host -ForegroundColor Yellow "Give me the removeip.nessus template..."
-[xml]$nessusFile = Get-Content(Get-FileName -initialDirectory (Get-Location) -filter "Nessus Results File (*.nessus)| *.nessus")
+$path = Get-FileName -initialDirectory (Get-Location) -filter "Nessus Results File (*.nessus)| *.nessus"
+[xml]$nessusFile = Get-Content($path) -ErrorAction Stop
 # Get the targets...
 Write-Host -ForegroundColor Yellow "Give me text file with IPs to remove (one per line)..."
-$target_ip_file = Get-FileName -initialDirectory (Get-Location) -filter "Text File with IPs (*.txt) | *.txt"
-$target_ip_addrs = Get-Content($target_ip_file)
+$path = Get-FileName -initialDirectory (Get-Location) -filter "Text File with IPs (*.txt) | *.txt"
+$target_ip_addrs = Get-Content($path) -ErrorAction Stop
+
+# Sanity check:
+if (($nessusFile -eq $null) -or ($target_ip_addrs -eq $null)) { throw "Something happened..." }
 
 <### Change out the template IP for the new IP(s) (Lines 21, 4378, 4380) ###>
 # Line 21: NessusClientData_v2.Policy.Preferences.ServerPreferences.preference; Get the 'TARGET' name/value pair
@@ -169,6 +178,10 @@ foreach ($line in $target_ip_addrs) {
         # WHARRGARBL! No one here but us kittens. Skip this $line.
     }
 }
+# We need IP addresses to continue, otherwise the SC backend will error out due to the malformed file.
+if ($concatenated_ips -eq "") {
+    throw "No IP addresses found in the input file. Terminating execution."
+}
 $concatenated_ips = $concatenated_ips.TrimEnd(',')
 $target_ip_addrs = $concatenated_ips.Split(',')
 $xml_node.value = $concatenated_ips
@@ -200,7 +213,7 @@ $nessusFile.Save($nessus_output_filename)
 
 # Compress the .nessus file, and remove the .nessus file
 $zip_output_filename = (Split-Path $target_ip_file) + "\Remove IP Nessus File - Populated.zip"
-Compress-Archive $nessus_output_filename -DestinationPath $zip_output_filename
+Compress-Archive $nessus_output_filename -DestinationPath $zip_output_filename -Force
 Remove-Item $nessus_output_filename
 
 # Now that we have the zipped .nessus file, upload it...
