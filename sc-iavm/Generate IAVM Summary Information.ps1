@@ -3,8 +3,12 @@ param(
 )
 
 try {  ### Begin module import block ###
-    Import-Module .\modules\Get-ExcelData.psm1 -ErrorAction Stop
-    Import-Module .\modules\KFK-CommonFunctions.psm1 -Function ("Invoke-CertificateChooser") -ErrorAction Stop
+    $location_of_modules = ";$env:USERPROFILE\Documents\AuthScripts\modules"
+    if ($env:PSModulePath -notlike ('*' + $location_of_modules + '*')) {
+        $env:PSModulePath += $location_of_modules
+    }
+    Import-Module Get-ExcelData -ErrorAction Stop
+    Import-Module KFK-CommonFunctions -Function ("Invoke-CertificateChooser") -ErrorAction Stop
 }
 catch [System.IO.FileNotFoundException] {
     Write-Host -ForegroundColor Red "Unable to load required module... terminating execution..."

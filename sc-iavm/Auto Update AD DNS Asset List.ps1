@@ -29,8 +29,12 @@ $excluded_ou_patterns = { $_.DistinguishedName -notmatch ",OU=MISCELLANEOUS," }
 
 
 try {  ### Begin module import block ###
-    Import-Module .\modules\KFK-CommonFunctions.psm1 -ErrorAction Stop -DisableNameChecking
-    Import-Module .\modules\sc.api.core.psm1 -ErrorAction Stop -DisableNameChecking
+    $location_of_modules = ";$env:USERPROFILE\Documents\AuthScripts\modules"
+    if ($env:PSModulePath -notlike ('*' + $location_of_modules + '*')) {
+        $env:PSModulePath += $location_of_modules
+    }
+    Import-Module KFK-CommonFunctions -Function ("Invoke-CertificateChooser") -ErrorAction Stop
+    Import-Module sc.api.core -ErrorAction Stop -DisableNameChecking
     Import-Module ActiveDirectory
 }
 catch [System.IO.FileNotFoundException] {
