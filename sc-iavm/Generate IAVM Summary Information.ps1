@@ -3,8 +3,12 @@ param(
 )
 
 try {  ### Begin module import block ###
-    Import-Module $env:USERPROFILE\Documents\AuthScripts\Modules\Get-ExcelData.psm1 -ErrorAction Stop
-    Import-Module $env:USERPROFILE\Documents\AuthScripts\Modules\KFK-CommonFunctions.psm1 -Function ("Invoke-CertificateChooser") -ErrorAction Stop
+    $location_of_modules = ";$env:USERPROFILE\Documents\AuthScripts\modules"
+    if ($env:PSModulePath -notlike ('*' + $location_of_modules + '*')) {
+        $env:PSModulePath += $location_of_modules
+    }
+    Import-Module Get-ExcelData -ErrorAction Stop
+    Import-Module KFK-CommonFunctions -Function ("Invoke-CertificateChooser") -ErrorAction Stop
 }
 catch [System.IO.FileNotFoundException] {
     Write-Host -ForegroundColor Red "Unable to load required module... terminating execution..."
@@ -17,20 +21,23 @@ $chosenCertThumb = "";
 if ($paramPKIThumbprint) { $chosenCertThumb = $paramPKIThumbprint }
 $webSession = New-Object Microsoft.PowerShell.Commands.WebRequestSession;
 $iavmSummaryWebLocation = "/iavm/iavmnotice/batchdownload.xls?iavmState=FINAL&includeNonActive=true&includeTechAdvisory=false&includeAlert=false&includeBulletin=false"
+$configFileName = '.\iavmDownload.conf'
 $externalConfig = $true
 
 
 function Read-ConfigFile {
     $config = ""
-    if ($externalConfig -and (Test-Path -Path .\downloadIAVM-HTMLFiles.conf)) {
-        $config = (Get-Content -Path .\downloadIAVM-HTMLFiles.conf) -join "`n" | ConvertFrom-Json
+    if ($externalConfig -and (Test-Path -Path $configFileName)) {
+        $config = (Get-Content -Path $configFileName) -join "`n" | ConvertFrom-Json
     }
     else {
-        $Local:tmp = Read-Host -Prompt "Give me the IAVM website... No trailing slash"
         $Local:zz = @{}
+        $Local:tmp = Read-Host -Prompt "Give me the IAVM website... No trailing slash"
         $Local:zz.Add("uri", $tmp)
+        $Local:tmp = Read-Host -Prompt "Give me the path to the EULA/Warning banner"
+        $Local:zz.Add("eula", $tmp)
         $config = $Local:zz
-        $Local:zz | ConvertTo-Json | Out-File -FilePath .\downloadIAVM-HTMLFiles.conf
+        $Local:zz | ConvertTo-Json | Out-File -FilePath $configFileName
     }
     $Script:iavmSummaryWebLocation = $config.uri + $iavmSummaryWebLocation
 }
