@@ -76,11 +76,12 @@ function Get-IPRange {
 
 # Get the XML data...
 Write-Host -ForegroundColor Yellow "Give me the removeip.nessus template..."
-[xml]$nessusFile = Get-Content(Get-FileName -initialDirectory (Get-Location) -filter "Nessus Results File (*.nessus)| *.nessus")
+$path = Get-FileName -initialDirectory (Get-Location) -filter "Nessus Results File (*.nessus)| *.nessus"
+[xml]$nessusFile = Get-Content($path) -ErrorAction Stop
 # Get the targets...
 Write-Host -ForegroundColor Yellow "Give me text file with IPs to remove (one per line)..."
-$target_ip_file = Get-FileName -initialDirectory (Get-Location) -filter "Text File with IPs (*.txt) | *.txt"
-$target_ip_addrs = Get-Content($target_ip_file)
+$path = Get-FileName -initialDirectory (Get-Location) -filter "Text File with IPs (*.txt) | *.txt"
+$target_ip_addrs = Get-Content($path) -ErrorAction Stop
 
 <### Change out the template IP for the new IP(s) (Lines 21, 4378, 4380) ###>
 # Line 21: NessusClientData_v2.Policy.Preferences.ServerPreferences.preference; Get the 'TARGET' name/value pair
@@ -114,6 +115,10 @@ foreach ($line in $target_ip_addrs) {
     else {
         # WHARRGARBL! No one here but us kittens. Skip this $line.
     }
+}
+# We need IP addresses to continue, otherwise the SC backend will error out due to the malformed file.
+if ($concatenated_ips -eq "") {
+    throw "No IP addresses found in the input file. Terminating execution."
 }
 $concatenated_ips = $concatenated_ips.TrimEnd(',')
 $target_ip_addrs = $concatenated_ips.Split(',')
