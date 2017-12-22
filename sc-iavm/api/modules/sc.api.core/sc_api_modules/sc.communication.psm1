@@ -208,11 +208,16 @@ function SC-Connect {
         [string]$pkiCertThumbprint = '-1'
     );
     <#
-        Undocumented scResource values:
+        Undocumented scResource values (among possibly a few others):
         - reportDefinition
         - scanResult/import
         - reportDefinition/<reportID>/export
     #>
+
+    # Authentication must occur prior to using any other endpoints aside from ``token`` or ``system``
+    if (($Global:scToken_70DBAC67 -eq "") -and ($scResource -notin ("token", "system"))) {
+        throw "Cannot access resource <$scResource> without authenticating; first use SC-Authenticate."
+    }
 
     if ($scQueryStringDict) {
         $scQueryString = _SC-BuildQueryString -queryDict $scQueryStringDict
@@ -234,17 +239,22 @@ function SC-Connect {
     # Select endpoints operate in a manner such as /repository/{id}/ipInfo ... handle this
     # TODO: Is there a more elegant method of doing this?
     if ($scResource -like '*/-ID-/*') {
-        $scResource = $scResource.Replace("-ID-", $scResourceID)
-        Clear-Variable -Name $scResourceID
+        # Writing to scResource causes a parameter validation issue (because of course it does down past the param() block... why though)
+        if (!$scResourceID) {
+            throw "Resource <$scResource> specified, but the ID of the item was not specified."
+        }
+        $true_resource = $scResource.Replace("-ID-", $scResourceID)
+        Clear-Variable -Name scResourceID
     }
+    else { $true_resource = $scResource }
 
     # Grab a local copy of the SC REST URI
     $scURI = $Global:scURI_70DBAC67
 
     # Send it.
     if ($scHTTPMethod -eq "POST") {
-        if ($scResourceID) { $Local:tmpUri = $scURI + $scResource + '/' + $scResourceID }
-        else { $Local:tmpUri = $scURI + $scResource }
+        if ($scResourceID) { $Local:tmpUri = $scURI + $true_resource + '/' + $scResourceID }
+        else { $Local:tmpUri = $scURI + $true_resource }
         
         if ($scResource -eq "file/upload") {
             $scResponse = (Invoke-RestMethod -Uri $Local:tmpUri -Method POST -Body $scRawRequestPayload -WebSession $Global:scSession_70DBAC67 -TimeoutSec 180 -Headers $http_headers);
@@ -259,14 +269,14 @@ function SC-Connect {
         
     }
     elseif ($scHTTPMethod -eq "PATCH") {
-        if ($scResourceID) { $Local:tmpUri = $scURI + $scResource + '/' + $scResourceID }
-        else { $Local:tmpUri = $scURI + $scResource }
+        if ($scResourceID) { $Local:tmpUri = $scURI + $true_resource + '/' + $scResourceID }
+        else { $Local:tmpUri = $scURI + $true_resource }
 
         $scResponse = (Invoke-RestMethod -Uri $Local:tmpUri -Method PATCH -Body $json -WebSession $Global:scSession_70DBAC67 -TimeoutSec 180 -Headers $http_headers);
     }
     elseif ($scHTTPMethod -eq "GET") {
-        if ($scResourceID) { $Local:tmpUri = $scURI + $scResource + '/' + $scResourceID + $scQueryString }
-        else { $Local:tmpUri = $scURI + $scResource + $scQueryString }
+        if ($scResourceID) { $Local:tmpUri = $scURI + $true_resource + '/' + $scResourceID + $scQueryString }
+        else { $Local:tmpUri = $scURI + $true_resource + $scQueryString }
         
         # PKI: Handle GET against ``/system`` resource (AKA, Get a token)
         if ($scResource -eq "system") {
@@ -277,8 +287,8 @@ function SC-Connect {
         }
     }
     elseif ($scHTTPMethod -eq "DELETE") {
-        if ($scResourceID) { $Local:tmpUri = $scURI + $scResource + '/' + $scResourceID }
-        else { $Local:tmpUri = $scURI + $scResource }
+        if ($scResourceID) { $Local:tmpUri = $scURI + $true_resource + '/' + $scResourceID }
+        else { $Local:tmpUri = $scURI + $true_resource }
 
         $scResponse = (Invoke-RestMethod -Uri $Local:tmpUri -Method DELETE -WebSession $Global:scSession_70DBAC67 -TimeoutSec 180 -Headers $http_headers);
     }
@@ -297,9 +307,16 @@ function SC-Connect {
         $Global:scSession_70DBAC67 = $scSession
     }
 
-    # Quick and dirty error checking
-    _SC-Connect-CheckError($scResponse)
-
+    # Quick and dirty error checking, excluding resources that return in formats other than the standard JSON
+    $specialReturnFormats = @(
+        "policy/-ID-/export",
+        "reportDefinition/-ID-/export",
+        "asset/-ID-/export"
+    )
+    if ($scResource -notin $specialReturnFormats) {
+        _SC-Connect-CheckError($scResponse)
+    }
+    
     # Return the response
     return $scResponse
 }
@@ -307,7 +324,15 @@ function SC-Connect {
 
 function SC-Logout {
     SC-Connect -scResource token -scHTTPMethod DELETE
-    # We're trying to log out here; either there will be an issue, or it will succeed. Clear token either way.
+    # We're trying to log out here; either there will be an issue, or it will succeed. Clear token/session either way.
+    Clear-Variable -Name scSession_70DBAC67 -Scope Global -ErrorAction SilentlyContinue
+    $Global:scToken_70DBAC67 = ""
+}
+
+
+function SC-Force-Logout {
+    # Not so much a true 'logout' as a "clear the token and session variables, thus requiring a fresh login".
+    Clear-Variable -Name scSession_70DBAC67 -Scope Global -ErrorAction SilentlyContinue
     $Global:scToken_70DBAC67 = ""
 }
 
