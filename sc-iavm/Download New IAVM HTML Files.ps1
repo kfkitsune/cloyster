@@ -137,16 +137,18 @@ foreach ($z in $dirlist) {
 
 
 Pop-Location # Return to base location
+# Make our output directory
+$output_dir = (Get-Date -Format yyyyMMdd) + "_IAVM-HTML-Output"
 
 ### Begin Process of Getting IAVM HTML Files... ###
-if (Test-Path IAVM-HTML-Output) { #If the output directory already exists...
+if (Test-Path $output_dir) { #If the output directory already exists...
     Push-Location
-    Set-Location IAVM-HTML-Output
+    Set-Location $output_dir
 }
 else { # Doesn't exist... make it; silence output
-    New-Item IAVM-HTML-Output -ItemType directory | Out-Null
+    New-Item $output_dir -ItemType directory | Out-Null
     Push-Location
-    Set-Location IAVM-HTML-Output
+    Set-Location $output_dir
 }
 
 # Accept the EULA/System Use Notice on behalf of the user (And silence the BS)
@@ -167,18 +169,23 @@ if ((Get-Variable -Name iavmFilenames -ValueOnly).Count -ge 1) {
         Write-Host '('($local:progress++)/($iavmFilenames.Count)')' Saving HTML for $iavmValue from $IAVMHTMLDownloadURI.Replace("FOOBARBAZ",$iavmHTMLID)
         Invoke-RestMethod -Method Get -CertificateThumbprint $chosenCertThumb -WebSession $webSession -Uri $IAVMHTMLDownloadURI.Replace("FOOBARBAZ",$iavmHTMLID) -OutFile $fname.Replace("xml","htm")
     }
+    <# Create and open a list of new IAVM IDs for copying the new IDs elsewhere #>
+    $tmp_file_name = "new_iavm" + (Get-Random -Minimum 100000 -Maximum 9999999).ToString() + ".txt"
+    "Here are the new IAVM IDs to copy to the IAVM report`r`n" >> $tmp_file_name
+    ($iavmList.GetEnumerator() | Select-Object Value | ConvertTo-Csv -NoTypeInformation).Trim('"') | Select-Object -Skip 1 >> $tmp_file_name
+    Invoke-Item $tmp_file_name
+    Write-Host -ForegroundColor DarkGray "Allowing notepad to open (1.5s)..."
+    Start-Sleep -Milliseconds 1500
+    Remove-Item $tmp_file_name
+    Pop-Location  # Return to base location
+}
+else {
+    Write-Host -ForegroundColor Yellow "There were no new IAVM files to download for the specified period"
+    Pop-Location  # Return to base location
+    Remove-Item $output_dir  # This directory is empty if we are in this else block.
 }
 
-<# Create and open a list of new IAVM IDs for copying the new IDs elsewhere #>
-$tmp_file_name = "new_iavm" + (Get-Random -Minimum 100000 -Maximum 9999999).ToString() + ".txt"
-"Here are the new IAVM IDs to copy to the IAVM report`r`n" >> $tmp_file_name
-($iavmList.GetEnumerator() | Select-Object Value | ConvertTo-Csv -NoTypeInformation).Trim('"') | Select-Object -Skip 1 >> $tmp_file_name
-Invoke-Item $tmp_file_name
-Write-Host -ForegroundColor DarkGray "Allowing notepad to open (1.5s)..."
-Start-Sleep -Milliseconds 1500
-Remove-Item $tmp_file_name
 
-Pop-Location
 Write-Host -ForegroundColor Cyan "Cleaning up downloaded ZIP and working directory..."
 # Cleanup after ourselves... first the directory
 Remove-Item -Recurse -Path $iavmDirectoryName
