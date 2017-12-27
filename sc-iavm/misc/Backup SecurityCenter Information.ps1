@@ -1,8 +1,9 @@
-param(
-    [string]$paramPKIThumbprint = $null,
-    [string]$paramSecurityCenterURI = $null
-)
+"""
+A script to export information from the user-side environment of a SecurityCenter for backup purposes.
 
+It doesn't fully replace the need for the administrators of the server to perform backups, but it can
+be useful in some instances.
+"""
 
 try {  ### Begin module import block ###
     $location_of_modules = ";$env:USERPROFILE\Documents\AuthScripts\modules"
@@ -24,6 +25,7 @@ $chosenCertThumb = "";
 if ($paramPKIThumbprint) { [string]$chosenCertThumb = $paramPKIThumbprint }
 $scToken = "";
 $scriptDebug = $false
+$request_throttle_msec = 350;  # Time between successive calls to the SecurityCenter, when in a loop.
 
 
 function Read-ConfigFile {
@@ -65,7 +67,7 @@ SC-Authenticate -pkiThumbprint $chosenCertThumb -uri $uri | Out-Null
 
 # Create the directory (at the current location) to hold the exported information
 $directoryName = (Get-Date -Format yyyyMMdd) + "_SCBackup"
-New-Item -ItemType Directory -Name $directoryName
+New-Item -ItemType Directory -Name $directoryName | Out-Null
 Push-Location $directoryName
 
 
@@ -88,7 +90,7 @@ foreach($group in $resp_groups.response) {
     $group_storage += [pscustomobject]@{
         "id" = $group.id;
         "name" = $group.name;
-        "description" = $group.description;
+        "description" = $group.description -replace '[\n\r]';
         "assignedRepositories" = $repos;
         "definingAssets" = $assets;
         "assignedUsers" = $users;
@@ -100,7 +102,7 @@ Write-Host -ForegroundColor Green "Exported SecurityCenter group information."
 
 
 # ##### Extract user information #####
-$resp_users = SC-Get-User -firstname -lastname -address -authType -city -country -email -failedLogins -fax -fingerprint -group -lastLogin -locked -managedObjectsGroups -managedUsersGroups -createdTime -modifiedTime -mustChangePassword -phone -responsibleAsset -role -state -status -title -username -canManage -canUse
+$resp_users = SC-Get-User -firstname -lastname -address -authType -city -country -email -failedLogins -fingerprint -group -lastLogin -locked -managedObjectsGroups -managedUsersGroups -createdTime -modifiedTime -mustChangePassword -phone -responsibleAsset -role -state -status -title -username -canManage -canUse
 
 $user_storage = @()
 foreach($user in $resp_users.response) {
@@ -123,7 +125,6 @@ foreach($user in $resp_users.response) {
         "state" = $user.state;
         "country" = $user.country;
         "email" = $user.email;
-        "fax" = $user.fax;
         "phone" = $user.phone;
         "authType" = $user.authType;
         "role" = $user.role.name;
@@ -158,26 +159,32 @@ foreach ($scan in $resp_scans.response.usable) {
     $scan_storage += [pscustomobject]@{
         "id" = $scan.id;
         "name" = $scan.name;
-        "description" = $scan.description;
+        "description" = $scan.description -replace '[\n\r]';
         "ipList" = $scan_resp.response.ipList;
         "assets" = $assets
         "policy" = $scan.policy.name
         "repository" = $scan.repository.name;
         "zone" = $scan.zone.name;
-        "schedule" = ($scan.schedule | ConvertTo-Json -Depth 20);
+        "schedule" = ($scan.schedule | ConvertTo-Json -Depth 20 -Compress).Replace('"',"'");
         "owner" = $scan.owner.username;
         "credentials" = $credentials;
     }
 
-    Start-Sleep -Milliseconds 350  # Throttle the requests, somewhat
+    Start-Sleep -Milliseconds $request_throttle_msec  # Throttle the requests, somewhat
 }
 # Export the scan information
 $scan_storage | ConvertTo-Csv -NoTypeInformation | Out-File scan_information_export.csv
-Write-Host -ForegroundColor Green "Exported SecurityCenter group information."
+Write-Host -ForegroundColor Green "Exported SecurityCenter scan information."
 
 
 # ##### Extract scan policies / download #####
 $resp_scan_policies = SC-Get-ScanPolicy -filter usable -name -description -auditFiles -owner -groups
+
+# Since we're dumping a bunch of XML files, make a separate folder
+New-Item -ItemType Directory -Name "scanPolicies" | Out-Null
+Push-Location "scanPolicies"
+# The base path to save the downloaded files (since XML objects require the complete path)
+$basePath = (Get-Location).Path + '\'
 
 $scan_policy_storage = @()
 $currProgress = 0
@@ -194,25 +201,34 @@ foreach ($policy in $resp_scan_policies.response.usable) {
     $scan_policy_storage += [pscustomobject]@{
         "id" = $policy.id;
         "name" = $policy.name;
-        "description" = $policy.description
-        "owner" = $policy.owner.username
+        "description" = $policy.description -replace '[\n\r]';
+        "owner" = $policy.owner.username;
         "assigned_groups" = $groups;
-        "audit_files" = $auditFiles
+        "audit_files" = $auditFiles;
     }
 
     # Get and save out the XML file
     [xml]$resp = SC-Export-ScanPolicy -scanPolicyID $policy.id
     $output_filename = Remove-InvalidFilenameCharacters -name ("scanPolicy_" + $policy.id + " - " + $policy.name + ".xml")
-    $resp.Save($output_filename)
+    $resp.Save($basePath + $output_filename)
 
-    Start-Sleep -Milliseconds 350  # Throttle the requests, somewhat
+    Start-Sleep -Milliseconds $request_throttle_msec  # Throttle the requests, somewhat
 }
+# Pop back to the main backup directory
+Pop-Location
 # Write out the scan policy information
 $scan_policy_storage | ConvertTo-Csv -NoTypeInformation | Out-File scanPolicy_information_export.csv
+Write-Host -ForegroundColor Green "Exported SecurityCenter scan policy information."
 
 
 # ##### Extract report information / Download report templates #####
 $resp_reports = SC-Get-Reports -filter usable -name -description -owner -schedule -type -emailTargets -emailUsers
+
+# Since we're dumping a bunch of XML files, make a separate folder
+New-Item -ItemType Directory -Name "reportTemplates" | Out-Null
+Push-Location "reportTemplates"
+# The base path to save the downloaded files (since XML objects require the complete path)
+$basePath = (Get-Location).Path + '\'
 
 $report_storage = @()
 $currProgress = 0
@@ -227,9 +243,10 @@ foreach ($report in $resp_reports.response.usable) {
         "id" = $report.id;
         "owner" = $report.owner.username;
         "name" = $report.name;
-        "description" = $report.description;
+        # Carriage returns break Excel cells (because of course they do); replace newline and carriage returns
+        "description" = $report.description -replace '[\n\r]';
         "type" = $report.type;
-        "schedule" = ($report.schedule | ConvertTo-Json -Depth 20);
+        "schedule" = ($report.schedule | ConvertTo-Json -Depth 20 -Compress).Replace('"',"'");
         "emailUsers" = $emailUsers;
         "emailTargets" = $report.emailTargets;
     }
@@ -237,20 +254,32 @@ foreach ($report in $resp_reports.response.usable) {
     # Download the report teplates as a full export with references
     [xml]$resp = SC-Export-ReportDefinition -reportID $report.id -type full
     $output_filename = Remove-InvalidFilenameCharacters -name ("reportTemplateWithRefs_" + $report.id + " - " + $report.name + ".xml")
-    $resp.Save($output_filename)
+    $resp.Save($basePath + $output_filename)
 
-    Start-Sleep -Milliseconds 350  # Throttle the requests, somewhat
+    Start-Sleep -Milliseconds $request_throttle_msec  # Throttle the requests, somewhat
 }
+# Pop back to the main backup directory
+Pop-Location
 # Write out the report information
 $report_storage | ConvertTo-Csv -NoTypeInformation | Out-File report_information_export.csv
+Write-Host -ForegroundColor Green "Exported SecurityCenter report information."
 
 
 # ##### Extract asset lists information / Download asset list XML files #####
 $resp_assets = SC-Get-AssetList -name -description -owner -groups
 
+# Since we're dumping a bunch of XML files, make a separate folder
+New-Item -ItemType Directory -Name "assetLists" | Out-Null
+Push-Location "assetLists"
+# The base path to save the downloaded files (since XML objects require the complete path)
+$basePath = (Get-Location).Path + '\'
+
 $asset_storage = @()
 $currProgress = 0
 foreach ($asset in $resp_assets.response.usable) {
+    # ID zero (0) is /technically/ an asset; but it is 'All Defined Ranges'; skip it.
+    if ($asset.id -eq 0) { continue; }
+
     Write-Progress -Activity "Downloading asset list information..." -CurrentOperation ("Getting info for Asset ID#" + $asset.id) -PercentComplete (($currProgress++ / $resp_assets.response.usable.Count) * 100)
 
     if ($asset.groups -ne $null) {
@@ -259,21 +288,24 @@ foreach ($asset in $resp_assets.response.usable) {
 
     $asset_storage += [pscustomobject]@{
         "id" = $asset.id;
-        "name" = $asset.name
+        "name" = $asset.name;
         "owner" = $asset.owner.name;
         "groups" = $groups;
-        "description" = $asset.description;
+        "description" = $asset.description -replace '[\n\r]';
     }
 
     # Download the asset list template
     [xml]$resp = SC-Export-AssetList -assetListID $asset.id
     $output_filename = Remove-InvalidFilenameCharacters -name ("assetList_" + $asset.id + " - " + $asset.name + ".xml")
-    $resp.Save($output_filename)
+    $resp.Save($basePath + $output_filename)
 
-    Start-Sleep -Milliseconds 350  # Throttle the requests, somewhat
+    Start-Sleep -Milliseconds $request_throttle_msec  # Throttle the requests, somewhat
 }
+# Pop back to the main backup directory
+Pop-Location
 # Write out the asset information
 $asset_storage | ConvertTo-Csv -NoTypeInformation | Out-File assetList_information_export.csv
+Write-Host -ForegroundColor Green "Exported SecurityCenter asset list information."
 
 
 # ##### Extract scan zone information #####
@@ -284,12 +316,13 @@ foreach ($zone in $resp_scanZones.response) {
     $scanZone_storage += [pscustomobject]@{
         "id" = $zone.id;
         "name" = $zone.name;
-        "description" = $zone.description;
+        "description" = $zone.description -replace '[\n\r]';
         "ipList" = $zone.ipList;
     }
 }
 # Write out the scan zone information
 $scanZone_storage | ConvertTo-Csv -NoTypeInformation | Out-File scanZone_information_export.csv
+Write-Host -ForegroundColor Green "Exported SecurityCenter scan zone information."
 
 
 # ##### Extract repository information #####
@@ -300,7 +333,7 @@ foreach ($repo in $resp_repositories.response) {
     $repositories_storage += [pscustomobject]@{
         "id" = $repo.id;
         "name" = $repo.name;
-        "description" = $repo.description;
+        "description" = $repo.description -replace '[\n\r]';
         "dataFormat" = $repo.dataFormat;
         "ipCount" = $repo.typeFields.ipCount;
         "ipRange" = $repo.typeFields.ipRange;
@@ -308,6 +341,9 @@ foreach ($repo in $resp_repositories.response) {
 }
 # Write out the repository information
 $repositories_storage | ConvertTo-Csv -NoTypeInformation | Out-File repository_information_export.csv
+Write-Host -ForegroundColor Green "Exported SecurityCenter repository information."
 
 Pop-Location
 SC-Logout
+
+Write-Host -ForegroundColor Green "~~~~~ Information Export Complete ~~~~~"
