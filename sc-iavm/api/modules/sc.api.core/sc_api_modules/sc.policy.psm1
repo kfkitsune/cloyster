@@ -17,6 +17,8 @@ function SC-Get-ScanPolicy() {
     #>
     param(
         [switch]$name,
+        [ValidateSet("usable","managable","usable,managable")]
+          [string]$filter = "usable,managable",
         [switch]$description,
         [switch]$status,
         [switch]$policyTemplate,
@@ -29,14 +31,23 @@ function SC-Get-ScanPolicy() {
         [switch]$generateXCCDFResults,
         [switch]$auditFiles,
         [switch]$preferences,
-        [switch]$targetGroup
+        [switch]$targetGroup,
+        [switch]$owner,
+        [switch]$ownerGroup,
+        [switch]$groups,
+        [switch]$families
     )
     # Build the query dict; ID number is always returned (even if id wasn't specified)
-    $dict = @{ "fields" = "id" }
+    $dict = @{
+        "fields" = "id";
+        "filter" = $filter
+    }
     # Dynamically read the passed switches for the returned instead of a seperate line for each
     foreach ($key in $PSBoundParameters.Keys) {
         # Load the switch name into the fields
-        $dict.Set_Item("fields", $dict.Get_Item("fields") + ",$key")
+        if ($key -notin @('id','filter')) {
+            $dict.Set_Item("fields", $dict.Get_Item("fields") + ",$key")
+        }
     }
 
     # Name/Description/Status come back by default if no fields are requested

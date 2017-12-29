@@ -18,13 +18,16 @@ function SC-Get-Reports() {
         [ValidateSet("usable","managable","usable,managable")]
           [string]$filter = "usable,managable",
         [switch]$name,
+        [switch]$description,
         [switch]$type,
         [switch]$ownerGroup,
         [switch]$owner,
         [switch]$schedule,
         [switch]$canManage,
         [switch]$canUse,
-        [switch]$status
+        [switch]$status,
+        [switch]$emailTargets,
+        [switch]$emailUsers
     )
     # Build the query dict
     $dict = @{
@@ -61,8 +64,8 @@ function SC-Export-ReportDefinition() {
             > cleansed: Fully strips references, leaving no placeholders.
 
         Returns: An XML file with the definition of the report as specified by ``reportID``, and obeying the ``type`` selection.
-
-        # TODO: Verify this returns a raw XML file without being buried in the .response
+            Note: The returned information from the SC-Connect/Invoke-RestMethod is the raw XML data. It can be loaded into an [xml]
+            object directly and used from there.
     #>
     param(
         [Parameter(Mandatory=$true)]

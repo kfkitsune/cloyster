@@ -61,3 +61,16 @@ function Invoke-CertificateChooser {
 
     return $certificateListing.Get($in).Thumbprint #<--End state for this function
 }
+
+
+function Remove-InvalidFilenameCharacters() {
+    Param(
+        [Parameter(Mandatory=$true)]
+        [string]$name
+    )
+    $invalidCharacters = [System.IO.Path]::GetInvalidFileNameChars() -join ''
+    $re = "[{0}]" -f [Regex]::Escape($invalidCharacters)
+    $tmp = $name -replace $re
+    # Windows has a 255 maxlength on a filename... truncate to 255.
+    return (($tmp).Substring(0, [System.Math]::Min(255, $tmp.Length)))
+}
