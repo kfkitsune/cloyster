@@ -46,19 +46,41 @@ Function Get-Severity($sev_int) {
 }
 
 
-[xml]$nessusFile = Get-Content(Get-FileName(Get-Location))
+# Create a stream reader (PoSH /will/ choke if using Get-Content on files of any real size)
+$stream_reader = New-Object IO.StreamReader(Get-FileName(Get-Location))
+# Then get the XML reader
+$xml_reader = [Xml.XmlReader]::Create($stream_reader)
+# Skip to the first content node
+$xml_reader.MoveToContent()
 
-Write-Host "The Policy used was:" $nessusFile.NessusClientData_v2.Policy.policyName
 
+# Make a storage location for storing the information we are looking for as we process the file.
+$storage = @()
+# Nessus stores scan results in <ReportHost> nodes; go to the first one.
+while($xml_reader.ReadToFollowing("ReportHost")) {
+    # Get the ReportHost XML node's contents (as XML) for simpler processing (and so we are not constrained by the forward-only reader)
+    [xml]$report = $xml_reader.ReadOuterXml()
+    
+    Write-Host -ForegroundColor Cyan "/\/\/\/\/\ Begin Host :" $report.ReportHost.name ""
 
-foreach ($nessus_host in $nessusFile.NessusClientData_v2.Report.ReportHost) {
-    Write-Host -ForegroundColor Yellow "-----------Host:" $nessus_host.name "-----------"
-
-    <# Get each vulnerability from the host, then sort the resultant list by severity and plugin name #>
-    foreach ($item in ($nessus_host.ReportItem | Sort-Object -Property @{Expression = "severity"; Descending = $true}, @{Expression = "plugin_name"; Descending = $false})) {
+    foreach ($item in ($report.ReportHost.ReportItem | Sort-Object -Property @{Expression = "severity"; Descending = $true}, @{Expression = "plugin_name"; Descending = $false})) {
         if ($item.severity -ne 0) {  <# Ignore informationals #>
             Write-Host (Get-Severity($item.severity)) "--" $item.plugin_name
         }
     }
+
+    # Example: Get the scan duration and IP address, and store
+    $plugin_19506 = ($report.ReportHost.ReportItem | Where-Object {$_.pluginID -eq 19506})
+    # Split the plugin output text on CRLF
+    foreach ($line in $plugin_19506.plugin_output.Split("`r`n")) {
+        if ($line -like "*Scan duration : *") {
+            $duration = $line
+            $storage += [pscustomobject]@{
+                "ip_or_host" = $report.ReportHost.name;
+                "duration" = $duration;
+            }
+        }
+    }
+    Write-Host -ForegroundColor Cyan "\/\/\/\/\/ End Host :" $report.ReportHost.name ""
     Write-Host ""
 }
