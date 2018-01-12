@@ -208,11 +208,11 @@ foreach ($target in $target_ip_addrs) {
 [void]$template_node.ParentNode.RemoveChild($template_node)
 
 # Write-out the new XML file
-$nessus_output_filename = (Split-Path $target_ip_file) + "\Remove IP Nessus File - Populated.nessus"
+$nessus_output_filename = (Split-Path $path) + "\Remove IP Nessus File - Populated.nessus"
 $nessusFile.Save($nessus_output_filename)
 
 # Compress the .nessus file, and remove the .nessus file
-$zip_output_filename = (Split-Path $target_ip_file) + "\Remove IP Nessus File - Populated.zip"
+$zip_output_filename = (Split-Path $path) + "\Remove IP Nessus File - Populated.zip"
 Compress-Archive $nessus_output_filename -DestinationPath $zip_output_filename -Force
 Remove-Item $nessus_output_filename
 
