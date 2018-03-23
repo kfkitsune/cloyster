@@ -37,7 +37,7 @@ function Read-ConfigFile {
         $script:uri = ($conf | ConvertFrom-Json).uri
     }
     else {
-        while ($uri -eq $null) {
+        while ($uri -eq "") {
             $input = Read-Host -Prompt "Provide the SecurityCenter URI, no trailing slash"
             if (($input -like "https://*") -and ($input -notlike "https://*/")) {
                 $script:uri = $input
