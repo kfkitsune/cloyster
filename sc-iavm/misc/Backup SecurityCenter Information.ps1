@@ -344,6 +344,6 @@ $repositories_storage | ConvertTo-Csv -NoTypeInformation | Out-File repository_i
 Write-Host -ForegroundColor Green "Exported SecurityCenter repository information."
 
 Pop-Location
-SC-Logout
+SC-Logout | Out-Null
 
 Write-Host -ForegroundColor Green "~~~~~ Information Export Complete ~~~~~"
