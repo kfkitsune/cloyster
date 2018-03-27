@@ -15,8 +15,8 @@ function SC-Get-Reports() {
         Note: Undocumented endpoint, either in the SCCV or Cerberus variant of the API links
     #>
     param(
-        [ValidateSet("usable","managable","usable,managable")]
-          [string]$filter = "usable,managable",
+        [ValidateSet("usable","manageable","usable,manageable")]
+          [string]$filter = "usable,manageable",
         [switch]$name,
         [switch]$description,
         [switch]$type,
