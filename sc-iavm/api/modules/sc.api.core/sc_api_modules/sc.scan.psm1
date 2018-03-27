@@ -33,15 +33,15 @@ function SC-Get-ScanInfo() {
         Parameters:
           - id: Integer; If specified, only retrieve information about the scan with the ID number given.
               otherwise, retrieve all scans' info.
-          - filter: Only retrieve usable, managable, or both usable and managable scans. Defaults
-              to both usable and managable scans returned.
+          - filter: Only retrieve usable, manageable, or both usable and manageable scans. Defaults
+              to both usable and manageable scans returned.
           - getAllInfo: Switch; if specified, sets all switches to True to return all info
     #>
     param (
         [ValidatePattern("^\d+$")]
           [int]$id = 0,
-        [ValidateSet("usable","managable","usable,managable")]
-          [string]$filter = "usable,managable",
+        [ValidateSet("usable","manageable","usable,manageable")]
+          [string]$filter = "usable,manageable",
         [switch]$name,
         [switch]$description,
         [switch]$status,
@@ -414,7 +414,7 @@ function SC-Edit-Scan() {
 
 function SC-Get-RolloverScans() {
     <# Find any rollover scans #>
-    $resp = SC-Get-ScanInfo -filter managable -name -schedule -ownerGroup -owner -createdTime
+    $resp = SC-Get-ScanInfo -filter manageable -name -schedule -ownerGroup -owner -createdTime
     return $resp.response.manageable | Where-Object { $_.schedule.type -eq "rollover" }
 }
 
