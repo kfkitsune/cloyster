@@ -10,8 +10,8 @@ function SC-Get-AuditFiles() {
         https://docs.tenable.com/sccv/api/AuditFile.html
     #>
     param(
-        [ValidateSet("usable","managable","usable,managable")]
-          [string]$filter = "usable,managable",
+        [ValidateSet("usable","manageable","usable,manageable")]
+          [string]$filter = "usable,manageable",
         [switch]$name,
         [switch]$description,
         [switch]$type,
