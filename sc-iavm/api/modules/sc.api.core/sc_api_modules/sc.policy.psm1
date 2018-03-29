@@ -17,8 +17,8 @@ function SC-Get-ScanPolicy() {
     #>
     param(
         [switch]$name,
-        [ValidateSet("usable","managable","usable,managable")]
-          [string]$filter = "usable,managable",
+        [ValidateSet("usable","manageable","usable,manageable")]
+          [string]$filter = "usable,manageable",
         [switch]$description,
         [switch]$status,
         [switch]$policyTemplate,

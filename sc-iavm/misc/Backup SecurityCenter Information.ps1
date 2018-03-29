@@ -34,7 +34,7 @@ function Read-ConfigFile {
         $script:uri = ($conf | ConvertFrom-Json).uri
     }
     else {
-        while ($uri -eq $null) {
+        while ($script:uri -eq "") {
             $input = Read-Host -Prompt "Provide the SecurityCenter URI, no trailing slash"
             if (($input -like "https://*") -and ($input -notlike "https://*/")) {
                 $script:uri = $input
@@ -70,6 +70,7 @@ $directoryName = (Get-Date -Format yyyyMMdd) + "_SCBackup"
 New-Item -ItemType Directory -Name $directoryName | Out-Null
 Push-Location $directoryName
 
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 # ##### Extract group information #####
 $resp_groups = SC-Get-GroupInformation -name -repositories -description -definingAssets -users
@@ -100,6 +101,7 @@ foreach($group in $resp_groups.response) {
 $group_storage | ConvertTo-Csv -NoTypeInformation | Out-File group_information_export.csv
 Write-Host -ForegroundColor Green "Exported SecurityCenter group information."
 
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 # ##### Extract user information #####
 $resp_users = SC-Get-User -firstname -lastname -address -authType -city -country -email -failedLogins -fingerprint -group -lastLogin -locked -managedObjectsGroups -managedUsersGroups -createdTime -modifiedTime -mustChangePassword -phone -responsibleAsset -role -state -status -title -username -canManage -canUse
@@ -134,17 +136,18 @@ foreach($user in $resp_users.response) {
 $user_storage | ConvertTo-Csv -NoTypeInformation | Out-File user_information_export.csv
 Write-Host -ForegroundColor Green "Exported SecurityCenter user information."
 
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 # ##### Extract scan information #####
 # SC API BUG: Using ipList against the /scan endpoint does not return a CSV-list of IPs. Use ``SC-Get-ScanInfo -id $ID`` instead
 #   > ipList from /scan itself: 10.10.0.010.10.0.110.10.0.2
 #   > ipList from /scan/<id>: 10.10.0.0,10.10.0.1,10.10.0.2
-$resp_scans = SC-Get-ScanInfo -filter usable -name -description -type -policy -repository -zone -owner -schedule -assets -credentials
+$resp_scans = SC-Get-ScanInfo -filter manageable -name -description -type -policy -repository -zone -owner -schedule -assets -credentials -ownerGroup
 
 $scan_storage = @()
 $currProgress = 0
-foreach ($scan in $resp_scans.response.usable) {
-    Write-Progress -Activity "Downloading scan information..." -CurrentOperation ("Getting info for Scan ID#" + $scan.id) -PercentComplete (($currProgress++ / $resp_scans.response.usable.Count) * 100)
+foreach ($scan in $resp_scans.response.manageable) {
+    Write-Progress -Activity "Downloading scan information..." -CurrentOperation ("Getting info for Scan ID#" + $scan.id) -PercentComplete (($currProgress++ / $resp_scans.response.manageable.Count) * 100)
     
     # Get the ipList for the current scan (bug avoidance in the base /scan endpoint)
     $scan_resp = SC-Get-ScanInfo -id $scan.id -ipList
@@ -167,6 +170,7 @@ foreach ($scan in $resp_scans.response.usable) {
         "zone" = $scan.zone.name;
         "schedule" = ($scan.schedule | ConvertTo-Json -Depth 20 -Compress).Replace('"',"'");
         "owner" = $scan.owner.username;
+        "owner_group" = $scan.ownerGroup.name;
         "credentials" = $credentials;
     }
 
@@ -176,9 +180,10 @@ foreach ($scan in $resp_scans.response.usable) {
 $scan_storage | ConvertTo-Csv -NoTypeInformation | Out-File scan_information_export.csv
 Write-Host -ForegroundColor Green "Exported SecurityCenter scan information."
 
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 # ##### Extract scan policies / download #####
-$resp_scan_policies = SC-Get-ScanPolicy -filter usable -name -description -auditFiles -owner -groups
+$resp_scan_policies = SC-Get-ScanPolicy -filter manageable -name -description -auditFiles -owner -groups -ownerGroup
 
 # Since we're dumping a bunch of XML files, make a separate folder
 New-Item -ItemType Directory -Name "scanPolicies" | Out-Null
@@ -188,8 +193,8 @@ $basePath = (Get-Location).Path + '\'
 
 $scan_policy_storage = @()
 $currProgress = 0
-foreach ($policy in $resp_scan_policies.response.usable) {
-    Write-Progress -Activity "Downloading scan policy information..." -CurrentOperation ("Getting info for Scan Policy ID#" + $policy.id) -PercentComplete (($currProgress++ / $resp_scan_policies.response.usable.Count) * 100)
+foreach ($policy in $resp_scan_policies.response.manageable) {
+    Write-Progress -Activity "Downloading scan policy information..." -CurrentOperation ("Getting info for Scan Policy ID#" + $policy.id) -PercentComplete (($currProgress++ / $resp_scan_policies.response.manageable.Count) * 100)
 
     if ($policy.groups -ne $null) {
         $groups = [String]::Join("; ", $policy.groups.name)
@@ -203,6 +208,7 @@ foreach ($policy in $resp_scan_policies.response.usable) {
         "name" = $policy.name;
         "description" = $policy.description -replace '[\n\r]';
         "owner" = $policy.owner.username;
+        "owner_group" = $policy.ownerGroup.name;
         "assigned_groups" = $groups;
         "audit_files" = $auditFiles;
     }
@@ -210,7 +216,12 @@ foreach ($policy in $resp_scan_policies.response.usable) {
     # Get and save out the XML file
     [xml]$resp = SC-Export-ScanPolicy -scanPolicyID $policy.id
     $output_filename = Remove-InvalidFilenameCharacters -name ("scanPolicy_" + $policy.id + " - " + $policy.name + ".xml")
-    $resp.Save($basePath + $output_filename)
+    # Create a directory per group, and then save the file according to the group
+    $zGrpName = Remove-InvalidFilenameCharacters -name $policy.ownerGroup.name
+    if (!(Test-Path -LiteralPath ($basePath + $zGrpName + "\"))) {
+        New-Item -ItemType Directory -Path ($basePath + $zGrpName) | Out-Null
+    }
+    $resp.Save($basePath + $zGrpName + "\" + $output_filename)
 
     Start-Sleep -Milliseconds $request_throttle_msec  # Throttle the requests, somewhat
 }
@@ -220,9 +231,10 @@ Pop-Location
 $scan_policy_storage | ConvertTo-Csv -NoTypeInformation | Out-File scanPolicy_information_export.csv
 Write-Host -ForegroundColor Green "Exported SecurityCenter scan policy information."
 
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 # ##### Extract report information / Download report templates #####
-$resp_reports = SC-Get-Reports -filter usable -name -description -owner -schedule -type -emailTargets -emailUsers
+$resp_reports = SC-Get-Reports -filter 'usable,manageable' -name -description -owner -schedule -type -emailTargets -emailUsers -ownerGroup
 
 # Since we're dumping a bunch of XML files, make a separate folder
 New-Item -ItemType Directory -Name "reportTemplates" | Out-Null
@@ -231,10 +243,8 @@ Push-Location "reportTemplates"
 $basePath = (Get-Location).Path + '\'
 
 $report_storage = @()
-$currProgress = 0
-foreach ($report in $resp_reports.response.usable) {
-    Write-Progress -Activity "Downloading report information..." -CurrentOperation ("Getting info for Report ID#" + $report.id) -PercentComplete (($currProgress++ / $resp_reports.response.usable.Count) * 100)
-
+foreach ($report in $resp_reports.response.manageable) {
+    # Save all report information for all reports (Managable and Usable)
     if ($report.groups -ne $null) {
         $emailUsers = [String]::Join("; ", $report.emailUsers.username)
     } else { $emailUsers = "--NO USER EMAIL SELECTED--" }
@@ -242,6 +252,7 @@ foreach ($report in $resp_reports.response.usable) {
     $report_storage += [pscustomobject]@{
         "id" = $report.id;
         "owner" = $report.owner.username;
+        "owner_group" = $report.ownerGroup.name;
         "name" = $report.name;
         # Carriage returns break Excel cells (because of course they do); replace newline and carriage returns
         "description" = $report.description -replace '[\n\r]';
@@ -250,11 +261,26 @@ foreach ($report in $resp_reports.response.usable) {
         "emailUsers" = $emailUsers;
         "emailTargets" = $report.emailTargets;
     }
+}
+
+$currProgress = 0
+foreach ($report in $resp_reports.response.usable) {
+    # In their infinite wisdom, Tenable blocks exporting templates, UNLESS you:
+    # a) Own the report; or
+    # b) Are in the same group as the report owner.
+    # So just export our reports, then.
 
     # Download the report teplates as a full export with references
+    Write-Progress -Activity "Downloading report information..." -CurrentOperation ("Getting info for Report ID#" + $report.id) -PercentComplete (($currProgress++ / $resp_reports.response.usable.Count) * 100)
+
     [xml]$resp = SC-Export-ReportDefinition -reportID $report.id -type full
     $output_filename = Remove-InvalidFilenameCharacters -name ("reportTemplateWithRefs_" + $report.id + " - " + $report.name + ".xml")
-    $resp.Save($basePath + $output_filename)
+    # Create a directory per group, and then save the file according to the group
+    $zGrpName = Remove-InvalidFilenameCharacters -name $report.ownerGroup.name
+    if (!(Test-Path -LiteralPath ($basePath + $zGrpName + "\"))) {
+        New-Item -ItemType Directory -Path ($basePath + $zGrpName) | Out-Null
+    }
+    $resp.Save($basePath + $zGrpName + "\" + $output_filename)
 
     Start-Sleep -Milliseconds $request_throttle_msec  # Throttle the requests, somewhat
 }
@@ -264,9 +290,10 @@ Pop-Location
 $report_storage | ConvertTo-Csv -NoTypeInformation | Out-File report_information_export.csv
 Write-Host -ForegroundColor Green "Exported SecurityCenter report information."
 
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 # ##### Extract asset lists information / Download asset list XML files #####
-$resp_assets = SC-Get-AssetList -name -description -owner -groups
+$resp_assets = SC-Get-AssetList -name -description -owner -groups -ownerGroup
 
 # Since we're dumping a bunch of XML files, make a separate folder
 New-Item -ItemType Directory -Name "assetLists" | Out-Null
@@ -276,11 +303,11 @@ $basePath = (Get-Location).Path + '\'
 
 $asset_storage = @()
 $currProgress = 0
-foreach ($asset in $resp_assets.response.usable) {
+foreach ($asset in $resp_assets.response.manageable) {
     # ID zero (0) is /technically/ an asset; but it is 'All Defined Ranges'; skip it.
     if ($asset.id -eq 0) { continue; }
 
-    Write-Progress -Activity "Downloading asset list information..." -CurrentOperation ("Getting info for Asset ID#" + $asset.id) -PercentComplete (($currProgress++ / $resp_assets.response.usable.Count) * 100)
+    Write-Progress -Activity "Downloading asset list information..." -CurrentOperation ("Getting info for Asset ID#" + $asset.id) -PercentComplete (($currProgress++ / $resp_assets.response.manageable.Count) * 100)
 
     if ($asset.groups -ne $null) {
         $groups = [String]::Join("; ", $asset.groups.name)
@@ -290,6 +317,7 @@ foreach ($asset in $resp_assets.response.usable) {
         "id" = $asset.id;
         "name" = $asset.name;
         "owner" = $asset.owner.name;
+        "owner_group" = $asset.ownerGroup.name;
         "groups" = $groups;
         "description" = $asset.description -replace '[\n\r]';
     }
@@ -297,7 +325,12 @@ foreach ($asset in $resp_assets.response.usable) {
     # Download the asset list template
     [xml]$resp = SC-Export-AssetList -assetListID $asset.id
     $output_filename = Remove-InvalidFilenameCharacters -name ("assetList_" + $asset.id + " - " + $asset.name + ".xml")
-    $resp.Save($basePath + $output_filename)
+    # Create a directory per group, and then save the file according to the group
+    $zGrpName = Remove-InvalidFilenameCharacters -name $asset.ownerGroup.name
+    if (!(Test-Path -LiteralPath ($basePath + $zGrpName + "\"))) {
+        New-Item -ItemType Directory -Path ($basePath + $zGrpName) | Out-Null
+    }
+    $resp.Save($basePath + $zGrpName + "\" + $output_filename)
 
     Start-Sleep -Milliseconds $request_throttle_msec  # Throttle the requests, somewhat
 }
@@ -307,6 +340,7 @@ Pop-Location
 $asset_storage | ConvertTo-Csv -NoTypeInformation | Out-File assetList_information_export.csv
 Write-Host -ForegroundColor Green "Exported SecurityCenter asset list information."
 
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 # ##### Extract scan zone information #####
 $resp_scanZones = SC-Get-ScanZone -name -description -ipList
@@ -324,6 +358,7 @@ foreach ($zone in $resp_scanZones.response) {
 $scanZone_storage | ConvertTo-Csv -NoTypeInformation | Out-File scanZone_information_export.csv
 Write-Host -ForegroundColor Green "Exported SecurityCenter scan zone information."
 
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 # ##### Extract repository information #####
 $resp_repositories = SC-Get-Repositories -type All -name -description -dataFormat -typeFields
@@ -343,7 +378,9 @@ foreach ($repo in $resp_repositories.response) {
 $repositories_storage | ConvertTo-Csv -NoTypeInformation | Out-File repository_information_export.csv
 Write-Host -ForegroundColor Green "Exported SecurityCenter repository information."
 
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 Pop-Location
-SC-Logout
+SC-Logout | Out-Null
 
 Write-Host -ForegroundColor Green "~~~~~ Information Export Complete ~~~~~"

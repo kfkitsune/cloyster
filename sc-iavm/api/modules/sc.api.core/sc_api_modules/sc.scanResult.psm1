@@ -21,8 +21,8 @@ function SC-Get-ScanResults() {
     param(
         [ValidateScript({$_ -ge 0})]
           [int]$scanResultID = $null,
-        [ValidateSet("usable", "manageable", "usable,managable")]
-          [string]$filterAccess = "usable,managable",
+        [ValidateSet("usable", "manageable", "usable,manageable")]
+          [string]$filterAccess = "usable,manageable",
         [ValidateSet("running", "completed", "running,completed")]
           [string]$filterStatus = "running,completed",
         [switch]$name,

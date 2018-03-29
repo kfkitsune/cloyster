@@ -37,7 +37,7 @@ function Read-ConfigFile {
         $script:uri = ($conf | ConvertFrom-Json).uri
     }
     else {
-        while ($uri -eq $null) {
+        while ($uri -eq "") {
             $input = Read-Host -Prompt "Provide the SecurityCenter URI, no trailing slash"
             if (($input -like "https://*") -and ($input -notlike "https://*/")) {
                 $script:uri = $input
@@ -130,9 +130,20 @@ $chosenCertThumb = Invoke-CertificateChooser
 
 SC-Authenticate -pkiThumbprint $chosenCertThumb -uri $uri | Out-Null
 
+# Get a listing of the repositories and prompt for which to use
+$resp = SC-Get-Repositories -type Local -name
+$repos = @()
+foreach ($repo in $resp.response) {
+    $repos += [int]$repo.id
+    Write-Host "[" $repo.id "] - " $repo.name
+}
+[int]$repository_selected = Read-Host -Prompt "Enter the repository number to purge data from; other values exit."
+if ($repository_selected -notin $repos) {
+    Write-Host -ForegroundColor Red "Invalid option selected; terminating execution..."
+    exit
+}
 
 # Then process the IP purge request...
-
 # Get the XML data...
 Write-Host -ForegroundColor Yellow "Give me the removeip.nessus template..."
 $path = Get-FileName -initialDirectory (Get-Location) -filter "Nessus Results File (*.nessus)| *.nessus"
@@ -220,7 +231,7 @@ Remove-Item $nessus_output_filename
 $sc_uploaded_filename = SC-Upload-File -filePath $zip_output_filename
 
 # Then issue the command to import it.
-$resp = SC-Import-NessusResults -generatedFilename $sc_uploaded_filename -repositoryID 7
+$resp = SC-Import-NessusResults -generatedFilename $sc_uploaded_filename -repositoryID $repository_selected
 
 # Did the upload complete successfully?
 if ($resp.error_code -eq 0) {
