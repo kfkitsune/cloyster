@@ -3,7 +3,6 @@
 
     Tenable API References: 
     a) https://docs.tenable.com/sccv/api/index.html
-    b) https://support.tenable.com/support-center/cerberus-support-center/includes/widgets/sc_api/index.html
 #>
 #$scriptPath = split-path -parent $MyInvocation.MyCommand.Definition
 
