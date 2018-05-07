@@ -3,7 +3,6 @@
 
     Tenable API References: 
     a) https://docs.tenable.com/sccv/api/index.html
-    b) https://support.tenable.com/support-center/cerberus-support-center/includes/widgets/sc_api/index.html
 #>
 #$scriptPath = split-path -parent $MyInvocation.MyCommand.Definition
 
@@ -23,9 +22,10 @@ try {  ### Begin module import block ###
         "$PSScriptRoot\sc_api_modules\sc.policy.psm1",
         "$PSScriptRoot\sc_api_modules\sc.reports.psm1",
         "$PSScriptRoot\sc_api_modules\sc.repository.psm1",
-        "$PSScriptRoot\sc_api_modules\sc.rolesgroupsusers.psm1",
+        "$PSScriptRoot\sc_api_modules\sc.rolesgroups.psm1",
         "$PSScriptRoot\sc_api_modules\sc.scan.psm1",
         "$PSScriptRoot\sc_api_modules\sc.scanResult.psm1",
+        "$PSScriptRoot\sc_api_modules\sc.users.psm1",
         "$PSScriptRoot\sc_api_modules\sc.zone.psm1",
         "$PSScriptRoot\sc_api_modules\utils.psm1"
     )

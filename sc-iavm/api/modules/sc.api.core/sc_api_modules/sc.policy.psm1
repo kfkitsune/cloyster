@@ -11,7 +11,7 @@ function SC-Get-ScanPolicy() {
     <#
         Get the list of defined policies on the SecurityCenter.
 
-        API Reference: https://support.tenable.com/support-center/cerberus-support-center/includes/widgets/sc_api/Scan-Policy.html
+        API Reference: https://docs.tenable.com/sccv/api/Scan-Policy.html
 
         Endpoint: /rest/policy
     #>
@@ -71,8 +71,7 @@ function SC-Export-ScanPolicy() {
 
         Returns: An XML file representing the specified scan policy.
 
-        Note: Documented in the Cerberus variant of the API, not the SCCV
-        https://support.tenable.com/support-center/cerberus-support-center/includes/widgets/sc_api/Scan-Policy.html
+        API Reference: https://docs.tenable.com/sccv/api/Scan-Policy.html
     #>
     param(
         [Parameter(Mandatory=$true)]
