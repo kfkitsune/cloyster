@@ -326,7 +326,7 @@ function _GenerateScanScheduleJSONComponent() {
 function SC-Edit-Scan() {
     <#
         Edit the scan with an ID ``id``, changing only passed in fields. Not fully implemented from the API reference.
-        API Reference: https://support.tenable.com/support-center/cerberus-support-center/includes/widgets/sc_api/Scan.html
+        API Reference: https://docs.tenable.com/sccv/api/Scan.html
     #>
     param(
         [Parameter(Mandatory=$true)]
