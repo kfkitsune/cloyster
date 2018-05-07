@@ -130,6 +130,9 @@ foreach($user in $resp_users.response) {
         "phone" = $user.phone;
         "authType" = $user.authType;
         "role" = $user.role.name;
+        "locked" = $user.locked;
+        "lastLoginUnixEpochUTC" = $user.lastLogin;
+        "lastLoginDateTimeUTC" = Get-DateTimeFromUnixEpoch($user.lastLogin);
     }
 }
 # Write out the user information

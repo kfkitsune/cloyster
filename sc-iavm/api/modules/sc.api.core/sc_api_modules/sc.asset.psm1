@@ -59,8 +59,8 @@ function SC-Export-AssetList() {
 
         Returns: An XML copy of the asset list, suitable for importing to the SecurityCenter.
 
-        Note: Documented in the Cerberus-variant API reference, not the SCCV
-        URI: https://support.tenable.com/support-center/cerberus-support-center/includes/widgets/sc_api/Asset.html
+        API Reference: https://docs.tenable.com/sccv/api/Asset.html
+
         Endpoint: /asset/{id}/export
     #>
     param(

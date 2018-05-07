@@ -2,13 +2,13 @@
     Contains functions for interacting with repositories.
 
     Contains the following endpoints:
-      - 
+      - repository
 #>
 
 
 function SC-Get-Repositories() {
     <#
-        https://support.tenable.com/support-center/cerberus-support-center/includes/widgets/sc_api/Repository.html
+        https://docs.tenable.com/sccv/api/Repository.html
     #>
     param (
         #`id` always comes back
