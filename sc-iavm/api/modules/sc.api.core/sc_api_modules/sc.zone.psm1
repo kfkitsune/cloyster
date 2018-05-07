@@ -2,13 +2,13 @@
     Contains functions for interacting with scan zones.
 
     Contains the following endpoints:
-      - 
+      - zone
 #>
 
 
 function SC-Get-ScanZone() {
     <#
-        https://support.tenable.com/support-center/cerberus-support-center/includes/widgets/sc_api/Scan-Zone.html
+        https://docs.tenable.com/sccv/api/Scan-Zone.html
     #>
     param (
         #`id` always comes back
