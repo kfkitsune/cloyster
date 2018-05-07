@@ -23,9 +23,10 @@ try {  ### Begin module import block ###
         "$PSScriptRoot\sc_api_modules\sc.policy.psm1",
         "$PSScriptRoot\sc_api_modules\sc.reports.psm1",
         "$PSScriptRoot\sc_api_modules\sc.repository.psm1",
-        "$PSScriptRoot\sc_api_modules\sc.rolesgroupsusers.psm1",
+        "$PSScriptRoot\sc_api_modules\sc.rolesgroups.psm1",
         "$PSScriptRoot\sc_api_modules\sc.scan.psm1",
         "$PSScriptRoot\sc_api_modules\sc.scanResult.psm1",
+        "$PSScriptRoot\sc_api_modules\sc.users.psm1",
         "$PSScriptRoot\sc_api_modules\sc.zone.psm1",
         "$PSScriptRoot\sc_api_modules\utils.psm1"
     )
