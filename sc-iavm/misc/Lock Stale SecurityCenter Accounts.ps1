@@ -115,7 +115,7 @@ foreach ($account in $resp.response) {
         # Account is at most a week out from being locked; emit a warning
         Write-Host -ForegroundColor Yellow "The account named"$account.username"<"$account.email">, has not logged in for the past $age_of_account_days days. It will be locked when it has not been logged in to for $days_before_locking_account days."
     }
-    Write-Host $account.username + "," + $age_of_account_days
+    # Write-Host $account.username + "," + $age_of_account_days
 }
 
 
