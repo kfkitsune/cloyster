@@ -1,7 +1,7 @@
 param(
     [string]$paramPKIThumbprint = $null,
     [string]$paramSecurityCenterURI = $null,
-    [boolean]$paramUseDefaults = $true
+    [boolean]$paramUseDefaults = $false
 )
 
 <#
