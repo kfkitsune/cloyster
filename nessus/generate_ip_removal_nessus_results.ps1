@@ -80,8 +80,8 @@ $path = Get-FileName -initialDirectory (Get-Location) -filter "Nessus Results Fi
 [xml]$nessusFile = Get-Content($path) -ErrorAction Stop
 # Get the targets...
 Write-Host -ForegroundColor Yellow "Give me text file with IPs to remove (one per line)..."
-$path = Get-FileName -initialDirectory (Get-Location) -filter "Text File with IPs (*.txt) | *.txt"
-$target_ip_addrs = Get-Content($path) -ErrorAction Stop
+$target_ip_file = Get-FileName -initialDirectory (Get-Location) -filter "Text File with IPs (*.txt) | *.txt"
+$target_ip_addrs = Get-Content($target_ip_file) -ErrorAction Stop
 
 <### Change out the template IP for the new IP(s) (Lines 21, 4378, 4380) ###>
 # Line 21: NessusClientData_v2.Policy.Preferences.ServerPreferences.preference; Get the 'TARGET' name/value pair
@@ -91,7 +91,9 @@ $xml_node = $nessusFile.NessusClientData_v2.Policy.Preferences.ServerPreferences
    e.g., 1.2.3.4,2.3.4.0-2.3.4.255
 #>
 $concatenated_ips = ""
+$progress = 0
 foreach ($line in $target_ip_addrs) {
+    Write-Progress -Activity "Reading in IP lines" -CurrentOperation $line -PercentComplete (100 * ($progress / $target_ip_addrs.Count ))
     if ([System.Net.IPAddress]::TryParse($line, [ref]'0.0.0.0')) {
         # Is the line itself an IP?
         $concatenated_ips += $line + ","
@@ -100,21 +102,28 @@ foreach ($line in $target_ip_addrs) {
         # Maybe it is a CIDR range!?
         $cidr_split = $line.Split('/')
         $result = Get-IPRange -ip $cidr_split[0] -cidr $cidr_split[1]
+        $progress_inner = 0
         foreach ($entry in $result) {
+            Write-Progress -Activity "Expanding CIDR notation" -CurrentOperation $entry -PercentComplete (100 * ($progress_inner / $result.Count ))
             $concatenated_ips += $entry + ","
+            $progress_inner++
         }
     }
     elseif ($line.Contains('-')) {
         # Or even a range?!
         $range_split = $line.Split('-')
         $result = Get-IPRange -start $range_split[0] -end $range_split[1]
+        $progress_inner = 0
         foreach ($entry in $result) {
+            Write-Progress -Activity "Expanding range notation" -CurrentOperation $entry -PercentComplete (100 * ($progress_inner / $result.Count ))
             $concatenated_ips += $entry + ","
+            $progress_inner++
         }
     }
     else {
         # WHARRGARBL! No one here but us kittens. Skip this $line.
     }
+    $progress++
 }
 # We need IP addresses to continue, otherwise the SC backend will error out due to the malformed file.
 if ($concatenated_ips -eq "") {
@@ -126,7 +135,9 @@ $xml_node.value = $concatenated_ips
 
 # Store the XML location/node of our template
 $template_node = ($nessusFile.NessusClientData_v2.Report.ReportHost | Where-Object {$_.Name -eq "777.333.111.999"})
+$progress = 0
 foreach ($target in $target_ip_addrs) {
+    Write-Progress -Activity "Building XML nodes" -CurrentOperation $target.ToString() -PercentComplete (100 * ($progress / $target_ip_addrs.Count ))
     # Line 4378: $nessusFile.NessusClientData_v2.Report.ReportHost
     $editable_node = $template_node.Clone()  #This isn't linked to the $nessusFile XML object
     # Edit the IP (Line 4378)
@@ -141,6 +152,7 @@ foreach ($target in $target_ip_addrs) {
 
     # Add the new node to the XML tree
     [void]$template_node.ParentNode.AppendChild($editable_node)
+    $progress++
 }
 # Remove the source templated node
 [void]$template_node.ParentNode.RemoveChild($template_node)
