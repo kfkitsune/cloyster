@@ -91,7 +91,7 @@ foreach($group in $resp_groups.response) {
     $group_storage += [pscustomobject]@{
         "id" = $group.id;
         "name" = $group.name;
-        "description" = $group.description -replace '[\n\r]';
+        "description" = $group.description -replace '[\n\r]', ' // ';
         "assignedRepositories" = $repos;
         "definingAssets" = $assets;
         "assignedUsers" = $users;
@@ -165,7 +165,7 @@ foreach ($scan in $resp_scans.response.manageable) {
     $scan_storage += [pscustomobject]@{
         "id" = $scan.id;
         "name" = $scan.name;
-        "description" = $scan.description -replace '[\n\r]';
+        "description" = $scan.description -replace '[\n\r]', ' // ';
         "ipList" = $scan_resp.response.ipList;
         "assets" = $assets
         "policy" = $scan.policy.name
@@ -209,7 +209,7 @@ foreach ($policy in $resp_scan_policies.response.manageable) {
     $scan_policy_storage += [pscustomobject]@{
         "id" = $policy.id;
         "name" = $policy.name;
-        "description" = $policy.description -replace '[\n\r]';
+        "description" = $policy.description -replace '[\n\r]', ' // ';
         "owner" = $policy.owner.username;
         "owner_group" = $policy.ownerGroup.name;
         "assigned_groups" = $groups;
@@ -258,7 +258,7 @@ foreach ($report in $resp_reports.response.manageable) {
         "owner_group" = $report.ownerGroup.name;
         "name" = $report.name;
         # Carriage returns break Excel cells (because of course they do); replace newline and carriage returns
-        "description" = $report.description -replace '[\n\r]';
+        "description" = $report.description -replace '[\n\r]', ' // ';
         "type" = $report.type;
         "schedule" = ($report.schedule | ConvertTo-Json -Depth 20 -Compress).Replace('"',"'");
         "emailUsers" = $emailUsers;
@@ -322,7 +322,7 @@ foreach ($asset in $resp_assets.response.manageable) {
         "owner" = $asset.owner.name;
         "owner_group" = $asset.ownerGroup.name;
         "groups" = $groups;
-        "description" = $asset.description -replace '[\n\r]';
+        "description" = $asset.description -replace '[\n\r]', ' // ';
     }
 
     # Download the asset list template
@@ -371,7 +371,7 @@ foreach ($repo in $resp_repositories.response) {
     $repositories_storage += [pscustomobject]@{
         "id" = $repo.id;
         "name" = $repo.name;
-        "description" = $repo.description -replace '[\n\r]';
+        "description" = $repo.description -replace '[\n\r]', ' // ';
         "dataFormat" = $repo.dataFormat;
         "ipCount" = $repo.typeFields.ipCount;
         "ipRange" = $repo.typeFields.ipRange;
@@ -380,6 +380,37 @@ foreach ($repo in $resp_repositories.response) {
 # Write out the repository information
 $repositories_storage | ConvertTo-Csv -NoTypeInformation | Out-File repository_information_export.csv
 Write-Host -ForegroundColor Green "Exported SecurityCenter repository information."
+
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+# ##### Extract credential metadata #####
+# We can't get the actual passwords (thank Tux), but we can extract the information that the SC UI exposes.
+
+$resp_credentials = SC-Get-CredentialInformation -name -description -type -creator -target -groups -typeFields -tags -createdTime -modifiedTime -owner -ownerGroup
+
+$credentials_storage = @()
+foreach ($cred in $resp_credentials.response.manageable) {
+    if ($asset.groups -ne $null) {
+        $groups = [String]::Join("; ", $asset.groups.name)
+    } else { $groups = "--NOT SHARED WITH ANY GROUPS--" }
+
+    $credentials_storage += [pscustomobject]@{
+        "id" = $cred.id;
+        "name" = $cred.name;
+        "description" = $cred.description -replace '[\n\r]', ' // ';
+        "type" = $cred.type;
+        "createdTimeUTC" = Get-DateTimeFromUnixEpoch($cred.createdTime);
+        "modifiedTimeUTC" = Get-DateTimeFromUnixEpoch($cred.modifiedTime);
+        "groups" = $groups;
+        "typeFields" = ($cred.typeFields | ConvertTo-Json -Depth 20 -Compress).Replace('"',"'");
+        "creator" = $cred.creator;
+        "owner" = $cred.owner.username;
+        "ownerGroup" = $cred.ownerGroup.name;
+    }
+}
+
+$credentials_storage | ConvertTo-Csv -NoTypeInformation | Out-File credentials_information_export.csv
+Write-Host -ForegroundColor Green "Exported SecurityCenter credential information."
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
