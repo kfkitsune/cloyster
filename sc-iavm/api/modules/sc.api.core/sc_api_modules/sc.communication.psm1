@@ -64,14 +64,14 @@ function SC-Authenticate() {
         [Parameter(Mandatory=$true, ParameterSetName="Password")]
           [System.Management.Automation.PSCredential]$credential = $null,
         [Parameter(Mandatory=$true, ParameterSetName="PKI")]
-          [string]$pkiThumbprint = $null,
+          [string]$pkiThumbprint = "",
         [Parameter(Mandatory=$true)]
         [ValidateScript({($_ -like "https://*") -and ($_ -notlike "https://*/")})]
           [string]$uri
     )
     $Global:scURI_70DBAC67 = $uri + "/rest/"
     
-    if ($pkiThumbprint -ne $null) {
+    if ($pkiThumbprint -ne "") {
         # Attempt authenticating via PKI
         _SC-Authenticate-PKI -pkiCertThumbprint $pkiThumbprint
     }
