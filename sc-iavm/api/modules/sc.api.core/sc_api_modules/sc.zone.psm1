@@ -22,7 +22,7 @@ function SC-Get-ScanZone() {
         [switch]$totalScanners,
         [switch]$scanners
     )
-    $dict = @{ "fields" = "id" }
+    $dict = @{}
     # Dynamically read the passed switches for the returned instead of a seperate line for each
     foreach ($key in $PSBoundParameters.Keys) {
         # Load the switch name into the fields
