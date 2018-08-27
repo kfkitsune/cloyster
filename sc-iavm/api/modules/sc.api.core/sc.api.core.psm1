@@ -1,42 +1,44 @@
 <#
-    Loads all SC API modules on import.
+    The core module file for the PoSH SecurityCenter API.
+
+    Loads all subresources (i.e., functions for each endpoint) via .ps1 dot-sourcing.
 
     Tenable API References: 
     a) https://docs.tenable.com/sccv/api/index.html
 #>
-#$scriptPath = split-path -parent $MyInvocation.MyCommand.Definition
 
 try {  ### Begin module import block ###
     # Test for constrained language mode
     [void][Math]::Abs(1)
 
-    # Modules to load`
+    # Subresources to load / Components of this module
     $modules = @(
-        "$PSScriptRoot\sc_api_modules\sc.asset.psm1",
-        "$PSScriptRoot\sc_api_modules\sc.auditfile.psm1",
-        "$PSScriptRoot\sc_api_modules\sc.communication.psm1",
-        "$PSScriptRoot\sc_api_modules\sc.credential.psm1",
-        "$PSScriptRoot\sc_api_modules\sc.feed.psm1",
-        "$PSScriptRoot\sc_api_modules\sc.file.psm1",
-        "$PSScriptRoot\sc_api_modules\sc.plugin.psm1",
-        "$PSScriptRoot\sc_api_modules\sc.policy.psm1",
-        "$PSScriptRoot\sc_api_modules\sc.reports.psm1",
-        "$PSScriptRoot\sc_api_modules\sc.repository.psm1",
-        "$PSScriptRoot\sc_api_modules\sc.rolesgroups.psm1",
-        "$PSScriptRoot\sc_api_modules\sc.scan.psm1",
-        "$PSScriptRoot\sc_api_modules\sc.scanResult.psm1",
-        "$PSScriptRoot\sc_api_modules\sc.users.psm1",
-        "$PSScriptRoot\sc_api_modules\sc.zone.psm1",
-        "$PSScriptRoot\sc_api_modules\utils.psm1"
+        "$PSScriptRoot\sc_api_modules\sc.asset.ps1",
+        "$PSScriptRoot\sc_api_modules\sc.auditfile.ps1",
+        "$PSScriptRoot\sc_api_modules\sc.communication.ps1",
+        "$PSScriptRoot\sc_api_modules\sc.credential.ps1",
+        "$PSScriptRoot\sc_api_modules\sc.feed.ps1",
+        "$PSScriptRoot\sc_api_modules\sc.file.ps1",
+        "$PSScriptRoot\sc_api_modules\sc.plugin.ps1",
+        "$PSScriptRoot\sc_api_modules\sc.policy.ps1",
+        "$PSScriptRoot\sc_api_modules\sc.reports.ps1",
+        "$PSScriptRoot\sc_api_modules\sc.repository.ps1",
+        "$PSScriptRoot\sc_api_modules\sc.rolesgroups.ps1",
+        "$PSScriptRoot\sc_api_modules\sc.scan.ps1",
+        "$PSScriptRoot\sc_api_modules\sc.scanResult.ps1",
+        "$PSScriptRoot\sc_api_modules\sc.users.ps1",
+        "$PSScriptRoot\sc_api_modules\sc.zone.ps1",
+        "$PSScriptRoot\sc_api_modules\utils.ps1"
     )
     foreach ($module in $modules) {
-        Import-Module $module -DisableNameChecking -ErrorAction Stop
+        # Load the module via dot-sourcing
+        . $module
     }
 }
 catch [System.IO.FileNotFoundException] {
     Write-Host -ForegroundColor Red "Unable to load required module... terminating execution..."
     Start-Sleep -Seconds 5
-    exit
+    throw "Module import failed; cannot find $module"
 }
 catch {
     if ($_.FullyQualifiedErrorID -eq "MethodInvocationNotSupportedInConstrainedLanguage") {
