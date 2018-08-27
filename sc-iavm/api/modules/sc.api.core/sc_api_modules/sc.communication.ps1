@@ -12,13 +12,13 @@
      - system
 #>
 
-#==> ``_70DBAC67`` - a hopefully unique string to mark this module's global variables
+#==> ``_70DBAC67`` - a unique string to mark this module's script variables
 # The URI to the REST endpoint (e.g., "https://sc.contoso.com/rest/")
-$Global:scURI_70DBAC67 = ""
+$scURI_70DBAC67 = ""
 # The assigned token value from a system or token call
-$Global:scToken_70DBAC67 = ""
+$scToken_70DBAC67 = ""
 # A [Microsoft.PowerShell.Commands.WebRequestSession] from the Invoke-WebRequest call that logged into the SecurityCenter
-$Global:scSession_70DBAC67 = $null
+$scSession_70DBAC67 = $null
 
 
 function _SC-BuildQueryString {
@@ -58,7 +58,6 @@ function SC-Authenticate() {
           - $uri: Required. The base URI to the SecurityCenter (e.g., "https://sc.contoso.com"); no trailing slash.
 
         Returns: Nothing(?)
-        #TODO: Does script/global-level token storage work for this?
     #>
     param(
         [Parameter(Mandatory=$true, ParameterSetName="Password")]
@@ -69,7 +68,7 @@ function SC-Authenticate() {
         [ValidateScript({($_ -like "https://*") -and ($_ -notlike "https://*/")})]
           [string]$uri
     )
-    $Global:scURI_70DBAC67 = $uri + "/rest/"
+    $Script:scURI_70DBAC67 = $uri + "/rest/"
     
     if ($pkiThumbprint -ne "") {
         # Attempt authenticating via PKI
@@ -215,7 +214,7 @@ function SC-Connect {
     #>
 
     # Authentication must occur prior to using any other endpoints aside from ``token`` or ``system``
-    if (($Global:scToken_70DBAC67 -eq "") -and ($scResource -notin ("token", "system"))) {
+    if (($Script:scToken_70DBAC67 -eq "") -and ($scResource -notin ("token", "system"))) {
         throw "Cannot access resource <$scResource> without authenticating; first use SC-Authenticate."
     }
 
@@ -227,9 +226,9 @@ function SC-Connect {
     $json = $scJSONInput | ConvertTo-Json -Compress -Depth 10
 
     # If we have a token, then the X-SecurityCenter header must be set
-    if ($Global:scToken_70DBAC67 -eq "") { $http_headers=@{} }
+    if ($Script:scToken_70DBAC67 -eq "") { $http_headers=@{} }
     else {
-        $http_headers = @{"X-SecurityCenter"= $Global:scToken_70DBAC67}
+        $http_headers = @{"X-SecurityCenter"= $Script:scToken_70DBAC67}
         # Do we need to add any additional headers?
         if ($scAdditionalHeadersDict.Count -gt 0) {
             $http_headers += $scAdditionalHeadersDict
@@ -249,7 +248,7 @@ function SC-Connect {
     else { $true_resource = $scResource }
 
     # Grab a local copy of the SC REST URI
-    $scURI = $Global:scURI_70DBAC67
+    $scURI = $Script:scURI_70DBAC67
 
     # Send it.
     if ($scHTTPMethod -eq "POST") {
@@ -257,14 +256,14 @@ function SC-Connect {
         else { $Local:tmpUri = $scURI + $true_resource }
         
         if ($scResource -eq "file/upload") {
-            $scResponse = (Invoke-RestMethod -Uri $Local:tmpUri -Method POST -Body $scRawRequestPayload -WebSession $Global:scSession_70DBAC67 -TimeoutSec 180 -Headers $http_headers);
+            $scResponse = (Invoke-RestMethod -Uri $Local:tmpUri -Method POST -Body $scRawRequestPayload -WebSession $Script:scSession_70DBAC67 -TimeoutSec 180 -Headers $http_headers);
         }
         elseif ($scResource -eq "token") {
             # Handle POST against ``/token`` resource (AKA, Get a token)
             $scResponse = (Invoke-RestMethod -Uri $Local:tmpUri -Method POST -Body $json -SessionVariable scSession -TimeoutSec 180 -Headers $http_headers);
         }
         else {
-            $scResponse = (Invoke-RestMethod -Uri $Local:tmpUri -Method POST -Body $json -WebSession $Global:scSession_70DBAC67 -TimeoutSec 180 -Headers $http_headers);
+            $scResponse = (Invoke-RestMethod -Uri $Local:tmpUri -Method POST -Body $json -WebSession $Script:scSession_70DBAC67 -TimeoutSec 180 -Headers $http_headers);
         }
         
     }
@@ -272,7 +271,7 @@ function SC-Connect {
         if ($scResourceID) { $Local:tmpUri = $scURI + $true_resource + '/' + $scResourceID }
         else { $Local:tmpUri = $scURI + $true_resource }
 
-        $scResponse = (Invoke-RestMethod -Uri $Local:tmpUri -Method PATCH -Body $json -WebSession $Global:scSession_70DBAC67 -TimeoutSec 180 -Headers $http_headers);
+        $scResponse = (Invoke-RestMethod -Uri $Local:tmpUri -Method PATCH -Body $json -WebSession $Script:scSession_70DBAC67 -TimeoutSec 180 -Headers $http_headers);
     }
     elseif ($scHTTPMethod -eq "GET") {
         if ($scResourceID) { $Local:tmpUri = $scURI + $true_resource + '/' + $scResourceID + $scQueryString }
@@ -283,14 +282,14 @@ function SC-Connect {
             $scResponse = (Invoke-RestMethod -Uri $Local:tmpUri -Method GET -CertificateThumbprint $pkiCertThumbprint -SessionVariable scSession -TimeoutSec 180 -Headers $http_headers);
         }
         else {
-            $scResponse = (Invoke-RestMethod -Uri $Local:tmpUri -Method GET -WebSession $Global:scSession_70DBAC67 -TimeoutSec 180 -Headers $http_headers);
+            $scResponse = (Invoke-RestMethod -Uri $Local:tmpUri -Method GET -WebSession $Script:scSession_70DBAC67 -TimeoutSec 180 -Headers $http_headers);
         }
     }
     elseif ($scHTTPMethod -eq "DELETE") {
         if ($scResourceID) { $Local:tmpUri = $scURI + $true_resource + '/' + $scResourceID }
         else { $Local:tmpUri = $scURI + $true_resource }
 
-        $scResponse = (Invoke-RestMethod -Uri $Local:tmpUri -Method DELETE -WebSession $Global:scSession_70DBAC67 -TimeoutSec 180 -Headers $http_headers);
+        $scResponse = (Invoke-RestMethod -Uri $Local:tmpUri -Method DELETE -WebSession $Script:scSession_70DBAC67 -TimeoutSec 180 -Headers $http_headers);
     }
     else {
         Write-Host($scHTTPMethod)
@@ -302,9 +301,9 @@ function SC-Connect {
     # Write-Host(">>RESPONSE CONTENTS<< ::: " + $scResponse.response)
     if ($scResource -in ("token", "system")) {
         # Store the token
-        $Global:scToken_70DBAC67 = $scResponse.response.token;
+        $Script:scToken_70DBAC67 = $scResponse.response.token;
         # Store the session
-        $Global:scSession_70DBAC67 = $scSession
+        $Script:scSession_70DBAC67 = $scSession
     }
 
     # Quick and dirty error checking, excluding resources that return in formats other than the standard JSON
@@ -323,17 +322,25 @@ function SC-Connect {
 
 
 function SC-Logout {
-    SC-Connect -scResource token -scHTTPMethod DELETE
-    # We're trying to log out here; either there will be an issue, or it will succeed. Clear token/session either way.
-    Clear-Variable -Name scSession_70DBAC67 -Scope Global -ErrorAction SilentlyContinue
-    $Global:scToken_70DBAC67 = ""
+    try {
+        SC-Connect -scResource token -scHTTPMethod DELETE
+    }
+    catch {
+        Write-Debug("The SecurityCenter encountered an error when logging out; the error was:")
+        Write-Debug($Error[0])
+    }
+    finally {
+        # We're trying to log out here; either there will be an issue, or it will succeed. Clear token/session either way.
+        Clear-Variable -Name scSession_70DBAC67 -Scope Script -ErrorAction SilentlyContinue
+        $Script:scToken_70DBAC67 = ""
+    }
 }
 
 
 function SC-Force-Logout {
     # Not so much a true 'logout' as a "clear the token and session variables, thus requiring a fresh login".
-    Clear-Variable -Name scSession_70DBAC67 -Scope Global -ErrorAction SilentlyContinue
-    $Global:scToken_70DBAC67 = ""
+    Clear-Variable -Name scSession_70DBAC67 -Scope Script -ErrorAction SilentlyContinue
+    $Script:scToken_70DBAC67 = ""
 }
 
 
