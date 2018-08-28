@@ -36,16 +36,12 @@ if (Test-Path($filename)) {
 
 # Which plugins are we looking to export from the massive CSV?
 $target_plugins = @(
-    10400, # Mandrake Linux Security Advisory : slocate (MDKSA-2003:015)
     10428, # Microsoft Windows SMB Registry Not Fully Accessible Detection.
     11936, # OS Identification;
-    12643, # IMP Software Detection
     19506, # Nessus Scan Information;
     21745, # Authentication Failure - Local Checks Not Run;
-    23974, # Microsoft Windows SMB Share Hosting Office Files
     24786, # Nessus Windows Scan Not Performed with Admin Privileges;
-    26917, # Microsoft Windows SMB Registry: Nessus Cannot Access the Windows Registry;
-    92428  # Recent File History
+    26917 # Microsoft Windows SMB Registry: Nessus Cannot Access the Windows Registry;
 )
 [regex]$target_plugin_csv_pattern = "^`"(\d{5})`",`".*"
 
