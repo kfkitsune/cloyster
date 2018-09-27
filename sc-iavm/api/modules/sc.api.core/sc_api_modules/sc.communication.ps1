@@ -16,9 +16,19 @@
 # The URI to the REST endpoint (e.g., "https://sc.contoso.com/rest/")
 $scURI_70DBAC67 = ""
 # The assigned token value from a system or token call
-$scToken_70DBAC67 = ""
+$scToken_70DBAC67 = $null
 # A [Microsoft.PowerShell.Commands.WebRequestSession] from the Invoke-WebRequest call that logged into the SecurityCenter
 $scSession_70DBAC67 = $null
+
+
+function _debug-scVariables() {
+    # Returns the current values of the persisted variables.
+    return @{
+        "uri" = $Script:scURI_70DBAC67;
+        "token" = $Script:scToken_70DBAC67;
+        "session"= $Script:scSession_70DBAC67
+    }
+}
 
 
 function _SC-BuildQueryString {
@@ -155,6 +165,7 @@ function SC-Connect {
         [Parameter(Mandatory=$true)]
         [ValidateSet(
             "analysis",
+            "analysis/download",
             "asset",
             "asset/-ID-/export",
             "auditFile",
@@ -214,7 +225,7 @@ function SC-Connect {
     #>
 
     # Authentication must occur prior to using any other endpoints aside from ``token`` or ``system``
-    if (($Script:scToken_70DBAC67 -eq "") -and ($scResource -notin ("token", "system"))) {
+    if (($Script:scToken_70DBAC67 -eq $null) -and ($scResource -notin ("token", "system"))) {
         throw "Cannot access resource <$scResource> without authenticating; first use SC-Authenticate."
     }
 
@@ -226,7 +237,7 @@ function SC-Connect {
     $json = $scJSONInput | ConvertTo-Json -Compress -Depth 10
 
     # If we have a token, then the X-SecurityCenter header must be set
-    if ($Script:scToken_70DBAC67 -eq "") { $http_headers=@{} }
+    if ($Script:scToken_70DBAC67 -eq $null) { $http_headers=@{} }
     else {
         $http_headers = @{"X-SecurityCenter"= $Script:scToken_70DBAC67}
         # Do we need to add any additional headers?
@@ -279,7 +290,14 @@ function SC-Connect {
         
         # PKI: Handle GET against ``/system`` resource (AKA, Get a token)
         if ($scResource -eq "system") {
-            $scResponse = (Invoke-RestMethod -Uri $Local:tmpUri -Method GET -CertificateThumbprint $pkiCertThumbprint -SessionVariable scSession -TimeoutSec 180 -Headers $http_headers);
+            if ($Script:scToken_70DBAC67) {
+                # We already have a session, and we're trying to get something specific.
+                $scResponse = (Invoke-RestMethod -Uri $Local:tmpUri -Method GET -WebSession $Script:scSession_70DBAC67 -TimeoutSec 180 -Headers $http_headers);
+            }
+            else {
+                # We are trying to get a token (so no session has been established yet)
+                $scResponse = (Invoke-RestMethod -Uri $Local:tmpUri -Method GET -CertificateThumbprint $pkiCertThumbprint -SessionVariable scSession -TimeoutSec 180 -Headers $http_headers);
+            }
         }
         else {
             $scResponse = (Invoke-RestMethod -Uri $Local:tmpUri -Method GET -WebSession $Script:scSession_70DBAC67 -TimeoutSec 180 -Headers $http_headers);
@@ -299,7 +317,7 @@ function SC-Connect {
 
     # Write-Host("Received: " + $scResponse)
     # Write-Host(">>RESPONSE CONTENTS<< ::: " + $scResponse.response)
-    if ($scResource -in ("token", "system")) {
+    if (($scResource -in ("token", "system")) -and !$Script:scToken_70DBAC67) {
         # Store the token
         $Script:scToken_70DBAC67 = $scResponse.response.token;
         # Store the session
@@ -310,7 +328,8 @@ function SC-Connect {
     $specialReturnFormats = @(
         "policy/-ID-/export",
         "reportDefinition/-ID-/export",
-        "asset/-ID-/export"
+        "asset/-ID-/export",
+        "analysis/download"
     )
     if ($scResource -notin $specialReturnFormats) {
         _SC-Connect-CheckError($scResponse)
@@ -332,7 +351,7 @@ function SC-Logout {
     finally {
         # We're trying to log out here; either there will be an issue, or it will succeed. Clear token/session either way.
         Clear-Variable -Name scSession_70DBAC67 -Scope Script -ErrorAction SilentlyContinue
-        $Script:scToken_70DBAC67 = ""
+        Clear-Variable -Name scToken_70DBAC67 -Scope Script -ErrorAction SilentlyContinue
     }
 }
 
@@ -340,7 +359,7 @@ function SC-Logout {
 function SC-Force-Logout {
     # Not so much a true 'logout' as a "clear the token and session variables, thus requiring a fresh login".
     Clear-Variable -Name scSession_70DBAC67 -Scope Script -ErrorAction SilentlyContinue
-    $Script:scToken_70DBAC67 = ""
+    Clear-Variable -Name scToken_70DBAC67 -Scope Script -ErrorAction SilentlyContinue
 }
 
 

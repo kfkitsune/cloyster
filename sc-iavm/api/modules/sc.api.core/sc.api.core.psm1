@@ -14,6 +14,7 @@ try {  ### Begin module import block ###
     # Subresources to load / Components of this module
     $modules = @(
         "$PSScriptRoot\sc_api_modules\sc.asset.ps1",
+        "$PSScriptRoot\sc_api_modules\sc.analysis.ps1",
         "$PSScriptRoot\sc_api_modules\sc.auditfile.ps1",
         "$PSScriptRoot\sc_api_modules\sc.communication.ps1",
         "$PSScriptRoot\sc_api_modules\sc.credential.ps1",
@@ -44,4 +45,10 @@ catch {
     if ($_.FullyQualifiedErrorID -eq "MethodInvocationNotSupportedInConstrainedLanguage") {
         throw "The SecurityCenter API modules will not function properly in constrained language mode."
     }
+}
+try {
+    Add-Type -AssemblyName System.Web
+}
+catch {
+    throw "Cannot load required type, 'System.Web'; terminating execution"
 }
