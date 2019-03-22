@@ -237,7 +237,7 @@ Write-Host -ForegroundColor Green "Exported SecurityCenter scan policy informati
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 # ##### Extract report information / Download report templates #####
-$resp_reports = SC-Get-Reports -filter 'usable,manageable' -name -description -owner -schedule -type -emailTargets -emailUsers -ownerGroup
+$resp_reports = SC-Get-ReportDefinitions -filter 'usable,manageable' -name -description -owner -schedule -type -emailTargets -emailUsers -ownerGroup
 
 # Since we're dumping a bunch of XML files, make a separate folder
 New-Item -ItemType Directory -Name "reportTemplates" | Out-Null
