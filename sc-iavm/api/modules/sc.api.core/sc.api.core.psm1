@@ -22,7 +22,7 @@ try {  ### Begin module import block ###
         "$PSScriptRoot\sc_api_modules\sc.file.ps1",
         "$PSScriptRoot\sc_api_modules\sc.plugin.ps1",
         "$PSScriptRoot\sc_api_modules\sc.policy.ps1",
-        "$PSScriptRoot\sc_api_modules\sc.reports.ps1",
+        "$PSScriptRoot\sc_api_modules\sc.reportDefinition.ps1",
         "$PSScriptRoot\sc_api_modules\sc.repository.ps1",
         "$PSScriptRoot\sc_api_modules\sc.rolesgroups.ps1",
         "$PSScriptRoot\sc_api_modules\sc.scan.ps1",
