@@ -38,3 +38,12 @@ function SC-Upload-File() {
     # The name of the file on the SecurityCenter server to be used for other actions (such as importing)
     return $resp.response.filename
 }
+
+function SC-Clear-File() {
+    <# Removes the File associated with {filename}. #>
+    param(
+        [Parameter(Mandatory=$true)]
+          [string]$filename
+    )
+    SC-Connect -scResource file/clear -scHTTPMethod POST -scJSONInput @{"filename"=$filename} -scAdditionalHeadersDict @{"Content-Type" = "application/json"}
+}
