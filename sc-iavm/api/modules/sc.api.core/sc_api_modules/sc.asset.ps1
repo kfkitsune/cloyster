@@ -51,6 +51,37 @@ function SC-Get-AssetList () {
 }
 
 
+function SC-Delete-AssetList() {
+    <#
+        Deletes the asset list associated with $id, depending on access and permissions
+    #>
+    param(
+        [Parameter(Mandatory=$true)]
+        [ValidateScript({$_ -ge 0})]
+          [int]$id
+    )
+
+    return SC-Connect -scResourceID $id -scResource asset -scHTTPMethod DELETE
+}
+
+
+function SC-Import-AssetList() {
+    <#
+        Imports an Asset specified by a previously uploaded, plain text XML file.
+
+        NOTE: The filename field should contain the value of the same parameter passed back on */file/upload::POST*.
+    #>
+    param(
+        [Parameter(Mandatory=$true)]
+          [string]$filename,
+        [string]$name  # The new name of the asset list
+    )
+    $dict = @{ "name" = $name; "filename" = $filename; "tags" = ""; }
+    
+    return SC-Connect -scResource asset/import -scHTTPMethod POST -scJSONInput $dict -scAdditionalHeadersDict @{"Content-Type" = "application/json"}
+}
+
+
 function SC-Export-AssetList() {
     <#
         Exports the Asset associated with ``assetListID`` as plain text XML.
