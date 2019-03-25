@@ -276,7 +276,7 @@ foreach ($report in $resp_reports.response.usable) {
     # Download the report teplates as a full export with references
     Write-Progress -Activity "Downloading report information..." -CurrentOperation ("Getting info for Report ID#" + $report.id) -PercentComplete (($currProgress++ / $resp_reports.response.usable.Count) * 100)
 
-    [xml]$resp = SC-Export-ReportDefinition -reportID $report.id -type full
+    [xml]$resp = SC-Export-ReportDefinition -reportID $report.id -type placeholders
     $output_filename = Remove-InvalidFilenameCharacters -name ("reportTemplateWithRefs_" + $report.id + " - " + $report.name + ".xml")
     
     # Create a directory per group/user, and then save the file accordingly...
