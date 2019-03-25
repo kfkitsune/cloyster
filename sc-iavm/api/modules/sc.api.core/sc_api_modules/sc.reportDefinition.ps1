@@ -72,7 +72,7 @@ function SC-Export-ReportDefinition() {
         [ValidateScript({$_ -ge 0})]
           [int]$reportID,
         [Parameter(Mandatory=$true)]
-        [ValidateSet("full", "placeholder","cleansed")]
+        [ValidateSet("full", "placeholders","cleansed")]
           [string]$type
     )
     $dict = @{ "exportType" = $type }
