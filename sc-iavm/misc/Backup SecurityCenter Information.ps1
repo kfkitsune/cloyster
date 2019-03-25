@@ -25,7 +25,7 @@ $chosenCertThumb = "";
 if ($paramPKIThumbprint) { [string]$chosenCertThumb = $paramPKIThumbprint }
 $scToken = "";
 $scriptDebug = $false
-$request_throttle_msec = 350;  # Time between successive calls to the SecurityCenter, when in a loop.
+$request_throttle_msec = 275;  # Time between successive calls to the SecurityCenter, when in a loop.
 
 
 function Read-ConfigFile {
@@ -278,12 +278,15 @@ foreach ($report in $resp_reports.response.usable) {
 
     [xml]$resp = SC-Export-ReportDefinition -reportID $report.id -type full
     $output_filename = Remove-InvalidFilenameCharacters -name ("reportTemplateWithRefs_" + $report.id + " - " + $report.name + ".xml")
-    # Create a directory per group, and then save the file according to the group
+    
+    # Create a directory per group/user, and then save the file accordingly...
     $zGrpName = Remove-InvalidFilenameCharacters -name $report.ownerGroup.name
-    if (!(Test-Path -LiteralPath ($basePath + $zGrpName + "\"))) {
-        New-Item -ItemType Directory -Path ($basePath + $zGrpName) | Out-Null
+    $zUsrName = Remove-InvalidFilenameCharacters -name ($report.owner.username + ' (' + $report.owner.firstname + ' ' + $report.owner.lastname + ')')
+    $zTargetPath = $zGrpName + "\" + $zUsrName + "\"
+    if (!(Test-Path -LiteralPath ($basePath + $zTargetPath))) {
+        New-Item -ItemType Directory -Path ($basePath + $zTargetPath) | Out-Null
     }
-    $resp.Save($basePath + $zGrpName + "\" + $output_filename)
+    $resp.Save($basePath + $zTargetPath + "\" + $output_filename)
 
     Start-Sleep -Milliseconds $request_throttle_msec  # Throttle the requests, somewhat
 }
@@ -328,12 +331,16 @@ foreach ($asset in $resp_assets.response.manageable) {
     # Download the asset list template
     [xml]$resp = SC-Export-AssetList -assetListID $asset.id
     $output_filename = Remove-InvalidFilenameCharacters -name ("assetList_" + $asset.id + " - " + $asset.name + ".xml")
-    # Create a directory per group, and then save the file according to the group
+    
+    # Create a directory per group/user, and then save the file accordingly...
     $zGrpName = Remove-InvalidFilenameCharacters -name $asset.ownerGroup.name
-    if (!(Test-Path -LiteralPath ($basePath + $zGrpName + "\"))) {
-        New-Item -ItemType Directory -Path ($basePath + $zGrpName) | Out-Null
+    $zUsrName = Remove-InvalidFilenameCharacters -name ($asset.owner.username + ' (' + $asset.owner.firstname + ' ' + $asset.owner.lastname + ')')
+    $zTargetPath = $zGrpName + "\" + $zUsrName + "\"
+    
+    if (!(Test-Path -LiteralPath ($basePath + $zTargetPath + "\"))) {
+        New-Item -ItemType Directory -Path ($basePath + $zTargetPath) | Out-Null
     }
-    $resp.Save($basePath + $zGrpName + "\" + $output_filename)
+    $resp.Save($basePath + $zTargetPath + "\" + $output_filename)
 
     Start-Sleep -Milliseconds $request_throttle_msec  # Throttle the requests, somewhat
 }
