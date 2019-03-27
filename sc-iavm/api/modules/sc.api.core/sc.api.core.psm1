@@ -26,6 +26,7 @@ try {  ### Begin module import block ###
         "$PSScriptRoot\sc_api_modules\sc.repository.ps1",
         "$PSScriptRoot\sc_api_modules\sc.rolesgroups.ps1",
         "$PSScriptRoot\sc_api_modules\sc.scan.ps1",
+        "$PSScriptRoot\sc_api_modules\sc.scanner.ps1",
         "$PSScriptRoot\sc_api_modules\sc.scanResult.ps1",
         "$PSScriptRoot\sc_api_modules\sc.users.ps1",
         "$PSScriptRoot\sc_api_modules\sc.zone.ps1",
