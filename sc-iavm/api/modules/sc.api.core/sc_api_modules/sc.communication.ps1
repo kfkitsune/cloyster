@@ -200,6 +200,10 @@ function SC-Connect {
             "scanner",
             "scanResult",
             "scanResult/import",
+            "scanResult/-ID-/stop",
+            "scanResult/-ID-/pause",
+            "scanResult/-ID-/resume",
+            "scanResult/-ID-/download",
             "status",
             "system",
             "ticket",
@@ -332,7 +336,8 @@ function SC-Connect {
         "policy/-ID-/export",
         "reportDefinition/-ID-/export",
         "asset/-ID-/export",
-        "analysis/download"
+        "analysis/download",
+        "scanResult/-ID-/download"
     )
     if ($scResource -notin $specialReturnFormats) {
         _SC-Connect-CheckError($scResponse)
