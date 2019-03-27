@@ -78,9 +78,85 @@ function SC-Get-ScanResults() {
 }
 
 
+function SC-Delete-ScanResult() {
+    <#
+        Deletes the scan result of a specified ID number.
+    #>
+    param(
+        [Parameter(Mandatory=$true)]
+        [ValidateScript({$_ -gt 0})]
+          [int]$resultID
+    )
+
+    return SC-Connect -scResource scanResult -scResourceID $resultID -scHTTPMethod DELETE
+}
+
+
+function SC-Stop-ScanResult() {
+    <#
+        Stops a scan result (read: a running scan) as identified by the supplied scan ID.
+    #>
+    param(
+        [Parameter(Mandatory=$true)]
+        [ValidateScript({$_ -gt 0})]
+          [int]$resultID
+    )
+
+    return SC-Connect -scResource scanResult/-ID-/stop -scResourceID $resultID -scHTTPMethod POST
+}
+
+
+function SC-Pause-ScanResult() {
+    <#
+        Pauses a scan result (read: a running scan) as identified by the supplied scan ID.
+    #>
+    param(
+        [Parameter(Mandatory=$true)]
+        [ValidateScript({$_ -gt 0})]
+          [int]$resultID
+    )
+
+    return SC-Connect -scResource scanResult/-ID-/pause -scResourceID $resultID -scHTTPMethod POST
+}
+
+
+function SC-Resume-ScanResult() {
+    <#
+        Resumes a scan result (read: a running scan) as identified by the supplied scan ID.
+    #>
+    param(
+        [Parameter(Mandatory=$true)]
+        [ValidateScript({$_ -gt 0})]
+          [int]$resultID
+    )
+
+    return SC-Connect -scResource scanResult/-ID-/resume -scResourceID $resultID -scHTTPMethod POST
+}
+
+
+function SC-Download-ScanResult() {
+    <#
+        Downloads a scan result (read: a running scan) as identified by the supplied scan ID.
+
+        Note: Result will be binary (likely a ZIP), or ASCII (if it is .nessus).
+    #>
+    param(
+        [Parameter(Mandatory=$true)]
+        [ValidateScript({$_ -gt 0})]
+          [int]$resultID,
+        [ValidateSet("v2","scap1_2")]
+          [string]$downloadType = "v2"
+    )
+    $dict = @{"downloadType" = $downloadType}
+    return SC-Connect -scResource scanResult/-ID-/download -scResourceID $resultID -scJSONInput $dict -scHTTPMethod POST -scAdditionalHeadersDict @{"Content-Type" = "application/json"}
+}
+
+
 function SC-Import-NessusResults() {
     <#
-        An undocumented endpoint for importing results from an uploaded Nessus results file.
+        Imports results from an uploaded Nessus results file.
+        
+        https://docs.tenable.com/sccv/api/Scan-Result.html#ScanResultRESTReference-/scanResult/import
 
         Requires the addition of the "Content-Type:application/json" header.
     #>
