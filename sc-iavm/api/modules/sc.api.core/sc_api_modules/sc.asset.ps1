@@ -11,7 +11,8 @@ function SC-Get-AssetList () {
     <# Either gets a specific asset list identified by `$id`, or retrieves all asset lists. #>
     param(
         [ValidateScript({$_ -ge 0})]
-          [int]$id = 0,
+          [int]$assetID,
+        [switch]$id,
         [switch]$name,
         [switch]$description,
         [switch]$request,
@@ -32,21 +33,22 @@ function SC-Get-AssetList () {
         [switch]$typeFields,
         [switch]$viewableIPs
     )
-    $dict = @{ "fields" = "id" }
+    $dict = @{ "fields" = "" }
     # Dynamically read the passed switches for the returned instead of a seperate line for each
     foreach ($key in $PSBoundParameters.Keys) {
-        if ($key -notin @('id')) {
-            $dict.Set_Item("fields", $dict.Get_Item("fields") + ",$key")
+        if ($key -notin @('assetID')) {
+            $dict.Set_Item("fields", ($dict.Get_Item("fields") + ",$key").TrimStart(','))
         }
     }
-
-    if ($id -eq 0) {
-        # Default case for when we want to retrieve all asset lists from the SecurityCenter
-        return SC-Connect -scResource asset -scHTTPMethod GET -scQueryStringDict $dict
+    if ($dict['fields'] -eq "") { $dict.Remove('fields') }  # If no fields specified, clear for SC default fields
+    
+    if ($assetID) {
+        # We only want a single asset list as identified by `$assetID`.
+        return SC-Connect -scResource asset -scHTTPMethod GET -scQueryStringDict $dict -scResourceID $assetID
     }
     else {
-        # We only want a single asset list as identified by `$id`.
-        return SC-Connect -scResourceID $id -scResource asset -scHTTPMethod GET -scQueryStringDict $dict
+        # Default case for when we want to retrieve all asset lists from the SecurityCenter
+        return SC-Connect -scResource asset -scHTTPMethod GET -scQueryStringDict $dict
     }
 }
 
@@ -100,6 +102,12 @@ function SC-Export-AssetList() {
           [int]$assetListID
     )
     return SC-Connect -scResource asset/-ID-/export -scResourceID $assetListID -scHTTPMethod GET
+}
+
+
+function SC-Get-AssetTags() {
+    <# Gets the full list of unique Asset tags #>
+    return SC-Connect -scResource asset/tags -scHTTPMethod GET
 }
 
 
