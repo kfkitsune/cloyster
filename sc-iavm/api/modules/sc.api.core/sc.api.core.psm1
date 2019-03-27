@@ -14,6 +14,7 @@ try {  ### Begin module import block ###
     # Subresources to load / Components of this module
     $modules = @(
         "$PSScriptRoot\sc_api_modules\sc.asset.ps1",
+        "$PSScriptRoot\sc_api_modules\sc.assetTemplate.ps1",
         "$PSScriptRoot\sc_api_modules\sc.analysis.ps1",
         "$PSScriptRoot\sc_api_modules\sc.auditfile.ps1",
         "$PSScriptRoot\sc_api_modules\sc.communication.ps1",
