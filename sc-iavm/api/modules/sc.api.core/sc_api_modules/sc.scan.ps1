@@ -117,13 +117,16 @@ function SC-Create-Scan() {
         [ValidateScript({$_ -gt 0})]
           [int]$repositoryID,
         [Parameter(Mandatory=$true)]
-        [ValidateScript({$_ -gt 0})]
+        [ValidateScript({$_ -ge 0})]
           [int]$scanZoneID = 0,
         [ValidateSet("true", "false")]
           [string]$dhcpTracking = "false",
         [ValidateSet(0,1,2,3,4,5,6,30,60,90,365)]
           [int]$classifyMitigatedAge = 0,
-        $reports = @(),  # Not yet implemented
+        [ValidateScript({$_ -gt 0})]
+          [int[]]$reportIDs,
+        [ValidateSet("cumulative", "patched", "individual", "lce", "archive", "mobile")]
+          [string[]]$reportSources,
         [ValidateScript({$_ -gt 0})]
           [int[]]$assetListIDs = @(),
         [ValidateScript({$_ -gt 0})]
@@ -175,17 +178,36 @@ function SC-Create-Scan() {
     $dict += @{ "zone" = @{ "id" = $scanZoneID } }
     $dict += @{ "dhcpTracking" = $dhcpTracking }
     $dict += @{ "classifyMitigatedAge" = $classifyMitigatedAge }
+    
     # Generate the schedule component
     if (($schedule -eq "ical") -or ($schedule -eq "dependent")) {
-        $dict += (_GenerateScanScheduleJSONComponent -schedule $schedule -startDateTime $startDateTime -repeatRuleFreq $repeatRuleFreq -repeatRuleInterval $repeatRuleInterval `
-            -repeatRuleByDay $repeatRuleByDay -repeatRuleNthDayOfTheWeek $repeatRuleNthDayOfTheWeek `
-            -repeatRuleDayOfTheMonth $repeatRuleDayOfTheMonth -dependentScanID $dependentScanID
-        )
+        $computedSchedule = (_GenerateScanScheduleJSONComponent -schedule $schedule -startDateTime $startDateTime `
+                -repeatRuleFreq $repeatRuleFreq -repeatRuleInterval $repeatRuleInterval `
+                -repeatRuleByDay $repeatRuleByDay -repeatRuleNthDayOfTheWeek $repeatRuleNthDayOfTheWeek `
+                -repeatRuleDayOfTheMonth $repeatRuleDayOfTheMonth -dependentScanID $dependentScanID
+              )
+        # Write-Host ($computedSchedule|ConvertTo-Json)
+        $dict += @{ "schedule" = $computedSchedule }
+    } 
+    else { $dict += @{ "schedule" = $schedule } }
+
+    # Handle reports
+    if ($reportIDs.Count -eq $reportSources.Count) {
+        if ($reportIDs.Count -gt 0) {
+            $arr = @()
+            for($i=0; $i -lt $reportIDs.Count; $i++) {
+                $arr += @{"reportID" = $reportIDs[$i]; "reportSource" = $reportSources[$i]}
+            }
+            $dict += @{ "reports" = $arr }
+        }
+        else {
+            $dict += @{ "reports" = @() }
+        }
     }
     else {
-        $dict += @{ "schedule" = $schedule }
+        throw "reportIDs and reportSources array lengths are not equal."
     }
-    $dict += @{ "reports" = @() }
+    
     # Generate the Assets ID block
     if ($assetListIDs) {
         $assets = @()
@@ -317,9 +339,7 @@ function _GenerateScanScheduleJSONComponent() {
         }
     }
 
-    return @{ 
-        "schedule" = $_schedule
-    }
+    return $_schedule
 }
 
 
@@ -357,20 +377,22 @@ function SC-Edit-Scan() {
           [string]$newDHCPTracking = $null,
         [ValidateSet(0,1,2,3,4,5,6,30,60,90,365)]
           [int]$newClassifyMitigatedAge = $null,
-        [Parameter(ParameterSetName="credentials")]
         [ValidateScript({$_ -gt 0})]
           [int[]]$newCredentialIDs = $null,
-        [Parameter(ParameterSetName="credentials")]
-          [switch]$clearCredentials,
+        [switch]$clearCredentials,
         [string]$newIPList = $null,
-        [Parameter(ParameterSetName="assets")]
         [ValidateScript({$_ -gt 0})]
           [int[]]$newAssets = $null,
-        [Parameter(ParameterSetName="assets")]
-        [switch]$clearAssets
+        [switch]$clearAssets,
         # NYI: schedule, reports
+        [ValidateSet("dependent", "ical", "never", "rollover", "template")]
+          $newScheduleType = $null
     )
     $dict = @{}
+    # Still need to properly deal with schedules... but for templating (i.e., setting "on demand") scans, this works...
+    if ($newScheduleType -eq "template") {
+        $dict += @{ "schedule" = @{"type" = $newScheduleType} }
+    }
     if ($newPolicyID) { $dict += @{ "policy" = @{"id" = $newPolicyID} } }
     if ($newName) { $dict += @{ "name" = $newName } }
     if ($newDescription) { $dict += @{ "description" = $newDescription } }
