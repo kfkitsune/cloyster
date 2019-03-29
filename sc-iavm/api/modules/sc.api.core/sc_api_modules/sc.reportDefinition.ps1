@@ -45,6 +45,36 @@ function SC-Get-ReportDefinitions() {
 }
 
 
+function SC-Edit-ReportDefinition() {
+    <#
+        Edits an existing report definition, changing only the passed parameters/fields.
+
+        Not fully implemented (in this API, but there is a full reference in the API documentation).
+        Currently only used here to template a report definition (AKA, unschedule/change to on demand).
+
+        https://docs.tenable.com/sccv/api/Report-Definition.html
+    #>
+    param(
+        [Parameter(Mandatory=$true)]
+        [ValidateScript({$_ -ge 0})]
+          [int]$id,
+        [ValidateSet("template")]
+          [string]$newScheduleType = $null
+    )
+    $dict = @{}
+    if ($newScheduleType -eq "template") {
+        $dict += @{"schedule" = @{"type" = "template"}}
+    }
+
+    # We must have something to change before we send (more validation)
+    if ($dict.Count -eq 0) {
+        throw "A report setting must be edited during a call to SC-Edit-Scan; no settings provided (`$dict is empty)"
+    }
+
+    return SC-Connect -scResource reportDefinition -scResourceID $id -scHTTPMethod PATCH -scJSONInput $dict
+}
+
+
 function SC-Export-ReportDefinition() {
     <#
         Exports the report definition for a specified report ID, optionally maintaining references to SecurityCenter specific objects,
