@@ -54,5 +54,6 @@ function Write-JSONConfigurationFile() {
         [switch]$NoClobber,
         [switch]$Compress
     )
-    ConvertTo-Json -Depth 100 -Compress:$Compress | Out-File -FilePath $FilePath -NoClobber:$NoClobber
+
+    $ConfObj | ConvertTo-Json -Depth 100 -Compress:$Compress | Out-File -FilePath $FilePath -NoClobber:$NoClobber
 }
