@@ -81,7 +81,7 @@ $path = Get-FileName -initialDirectory (Get-Location) -filter "Nessus Results Fi
 # Get the targets...
 Write-Host -ForegroundColor Yellow "Give me text file with IPs to remove (one per line)..."
 $target_ip_file = Get-FileName -initialDirectory (Get-Location) -filter "Text File with IPs (*.txt) | *.txt"
-$target_ip_addrs = Get-Content($target_ip_file) -ErrorAction Stop
+$target_ip_file_content = Get-Content($target_ip_file) -ErrorAction Stop
 
 <### Change out the template IP for the new IP(s) (Lines 21, 4378, 4380) ###>
 # Line 21: NessusClientData_v2.Policy.Preferences.ServerPreferences.preference; Get the 'TARGET' name/value pair
@@ -90,47 +90,36 @@ $xml_node = $nessusFile.NessusClientData_v2.Policy.Preferences.ServerPreferences
 <# Replace Line 21 with the target(s); Format is a comma separated list of either single IP, or range
    e.g., 1.2.3.4,2.3.4.0-2.3.4.255
 #>
-$concatenated_ips = ""
 $progress = 0
-foreach ($line in $target_ip_addrs) {
-    Write-Progress -Activity "Reading in IP lines" -CurrentOperation $line -PercentComplete (100 * ($progress / $target_ip_addrs.Count ))
+$target_ip_addrs = @()
+foreach ($line in $target_ip_file_content) {
+    Write-Progress -Activity "Reading in IP lines" -CurrentOperation $line -PercentComplete (100 * ($progress / $target_ip_file_content.Count ))
     if ([System.Net.IPAddress]::TryParse($line, [ref]'0.0.0.0')) {
         # Is the line itself an IP?
-        $concatenated_ips += $line + ","
+        $target_ip_addrs += $line
     }
     elseif ($line.Contains('/')) {
         # Maybe it is a CIDR range!?
         $cidr_split = $line.Split('/')
-        $result = Get-IPRange -ip $cidr_split[0] -cidr $cidr_split[1]
-        $progress_inner = 0
-        foreach ($entry in $result) {
-            Write-Progress -Activity "Expanding CIDR notation" -CurrentOperation $entry -PercentComplete (100 * ($progress_inner / $result.Count ))
-            $concatenated_ips += $entry + ","
-            $progress_inner++
-        }
+        $target_ip_addrs += Get-IPRange -ip $cidr_split[0] -cidr $cidr_split[1]
     }
     elseif ($line.Contains('-')) {
         # Or even a range?!
         $range_split = $line.Split('-')
-        $result = Get-IPRange -start $range_split[0] -end $range_split[1]
-        $progress_inner = 0
-        foreach ($entry in $result) {
-            Write-Progress -Activity "Expanding range notation" -CurrentOperation $entry -PercentComplete (100 * ($progress_inner / $result.Count ))
-            $concatenated_ips += $entry + ","
-            $progress_inner++
-        }
+        $target_ip_addrs += Get-IPRange -start $range_split[0] -end $range_split[1]
     }
-    else {
-        # WHARRGARBL! No one here but us kittens. Skip this $line.
-    }
+    # No match? Then... WHARRGARBL! No one here but us kittens. Skip this $line.
+
     $progress++
 }
+# Concatenation out here is more along the lines of O(1), instead of O(n) above.
+$concatenated_ips = [String]::Join(',', $target_ip_addrs)
+
 # We need IP addresses to continue, otherwise the SC backend will error out due to the malformed file.
 if ($concatenated_ips -eq "") {
     throw "No IP addresses found in the input file. Terminating execution."
 }
-$concatenated_ips = $concatenated_ips.TrimEnd(',')
-$target_ip_addrs = $concatenated_ips.Split(',')
+
 $xml_node.value = $concatenated_ips
 
 # Store the XML location/node of our template
