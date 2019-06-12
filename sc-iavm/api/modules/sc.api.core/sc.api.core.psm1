@@ -29,7 +29,7 @@ try {  ### Begin module import block ###
         "$PSScriptRoot\sc_api_modules\sc.scan.ps1",
         "$PSScriptRoot\sc_api_modules\sc.scanner.ps1",
         "$PSScriptRoot\sc_api_modules\sc.scanResult.ps1",
-        "$PSScriptRoot\sc_api_modules\sc.users.ps1",
+        "$PSScriptRoot\sc_api_modules\sc.user.ps1",
         "$PSScriptRoot\sc_api_modules\sc.zone.ps1",
         "$PSScriptRoot\sc_api_modules\utils.ps1"
     )
