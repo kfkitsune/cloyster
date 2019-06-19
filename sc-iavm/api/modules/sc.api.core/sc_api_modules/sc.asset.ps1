@@ -11,7 +11,8 @@ function SC-Get-AssetList () {
     <# Either gets a specific asset list identified by `$id`, or retrieves all asset lists. #>
     param(
         [ValidateScript({$_ -ge 0})]
-          [int]$id = 0,
+          [int]$assetID,
+        [switch]$id,
         [switch]$name,
         [switch]$description,
         [switch]$request,
@@ -32,22 +33,54 @@ function SC-Get-AssetList () {
         [switch]$typeFields,
         [switch]$viewableIPs
     )
-    $dict = @{ "fields" = "id" }
+    $dict = @{ "fields" = "" }
     # Dynamically read the passed switches for the returned instead of a seperate line for each
     foreach ($key in $PSBoundParameters.Keys) {
-        if ($key -notin @('id')) {
-            $dict.Set_Item("fields", $dict.Get_Item("fields") + ",$key")
+        if ($key -notin @('assetID')) {
+            $dict.Set_Item("fields", ($dict.Get_Item("fields") + ",$key").TrimStart(','))
         }
     }
-
-    if ($id -eq 0) {
+    if ($dict['fields'] -eq "") { $dict.Remove('fields') }  # If no fields specified, clear for SC default fields
+    
+    if ($assetID) {
+        # We only want a single asset list as identified by `$assetID`.
+        return SC-Connect -scResource asset -scHTTPMethod GET -scQueryStringDict $dict -scResourceID $assetID
+    }
+    else {
         # Default case for when we want to retrieve all asset lists from the SecurityCenter
         return SC-Connect -scResource asset -scHTTPMethod GET -scQueryStringDict $dict
     }
-    else {
-        # We only want a single asset list as identified by `$id`.
-        return SC-Connect -scResourceID $id -scResource asset -scHTTPMethod GET -scQueryStringDict $dict
-    }
+}
+
+
+function SC-Delete-AssetList() {
+    <#
+        Deletes the asset list associated with $id, depending on access and permissions
+    #>
+    param(
+        [Parameter(Mandatory=$true)]
+        [ValidateScript({$_ -ge 0})]
+          [int]$id
+    )
+
+    return SC-Connect -scResourceID $id -scResource asset -scHTTPMethod DELETE
+}
+
+
+function SC-Import-AssetList() {
+    <#
+        Imports an Asset specified by a previously uploaded, plain text XML file.
+
+        NOTE: The filename field should contain the value of the same parameter passed back on */file/upload::POST*.
+    #>
+    param(
+        [Parameter(Mandatory=$true)]
+          [string]$filename,
+        [string]$name  # The new name of the asset list
+    )
+    $dict = @{ "name" = $name; "filename" = $filename; "tags" = ""; }
+    
+    return SC-Connect -scResource asset/import -scHTTPMethod POST -scJSONInput $dict -scAdditionalHeadersDict @{"Content-Type" = "application/json"}
 }
 
 
@@ -69,6 +102,12 @@ function SC-Export-AssetList() {
           [int]$assetListID
     )
     return SC-Connect -scResource asset/-ID-/export -scResourceID $assetListID -scHTTPMethod GET
+}
+
+
+function SC-Get-AssetTags() {
+    <# Gets the full list of unique Asset tags #>
+    return SC-Connect -scResource asset/tags -scHTTPMethod GET
 }
 
 

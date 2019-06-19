@@ -6,13 +6,13 @@
 #>
 
 
-function SC-Get-Reports() {
+function SC-Get-ReportDefinitions() {
     <#
-        Returns a list of reports from the SecurityCenter.
+        Returns a list of report definitions from the SecurityCenter.
 
         Rest endpoint: /rest/reportDefinition
 
-        Note: Undocumented endpoint, either in the SCCV or Cerberus variant of the API links
+        https://docs.tenable.com/sccv/api/Report-Definition.html
     #>
     param(
         [ValidateSet("usable","manageable","usable,manageable")]
@@ -45,6 +45,36 @@ function SC-Get-Reports() {
 }
 
 
+function SC-Edit-ReportDefinition() {
+    <#
+        Edits an existing report definition, changing only the passed parameters/fields.
+
+        Not fully implemented (in this API, but there is a full reference in the API documentation).
+        Currently only used here to template a report definition (AKA, unschedule/change to on demand).
+
+        https://docs.tenable.com/sccv/api/Report-Definition.html
+    #>
+    param(
+        [Parameter(Mandatory=$true)]
+        [ValidateScript({$_ -ge 0})]
+          [int]$id,
+        [ValidateSet("template")]
+          [string]$newScheduleType = $null
+    )
+    $dict = @{}
+    if ($newScheduleType -eq "template") {
+        $dict += @{"schedule" = @{"type" = "template"}}
+    }
+
+    # We must have something to change before we send (more validation)
+    if ($dict.Count -eq 0) {
+        throw "A report setting must be edited during a call to SC-Edit-Scan; no settings provided (`$dict is empty)"
+    }
+
+    return SC-Connect -scResource reportDefinition -scResourceID $id -scHTTPMethod PATCH -scJSONInput $dict
+}
+
+
 function SC-Export-ReportDefinition() {
     <#
         Exports the report definition for a specified report ID, optionally maintaining references to SecurityCenter specific objects,
@@ -52,7 +82,7 @@ function SC-Export-ReportDefinition() {
 
         Rest endpoint: /rest/reportDefinition/<reportID>/export
 
-        Note: Undocumented endpoint, either in the SCCV or Cerberus variant of the API links
+        https://docs.tenable.com/sccv/api/Report-Definition.html
 
         Parameters:
           - reportID: The report ID of the report to be exported, as seen in the /#reports URI if visiting from the Web UI.
@@ -72,10 +102,29 @@ function SC-Export-ReportDefinition() {
         [ValidateScript({$_ -ge 0})]
           [int]$reportID,
         [Parameter(Mandatory=$true)]
-        [ValidateSet("full", "placeholder","cleansed")]
+        [ValidateSet("full", "placeholders","cleansed")]
           [string]$type
     )
     $dict = @{ "exportType" = $type }
 
     return SC-Connect -scResource reportDefinition/-ID-/export -scResourceID $reportID -scHTTPMethod POST -scJSONInput $dict
+}
+
+
+function SC-Import-ReportDefinition() {
+    <#
+        Imports a report definition, using a previously uploaded report definition file (SC-Import-File).
+
+        Parameters:
+          - name: Optional String. The new name of the report. Otherwise, uses what is in the report definition.
+          - filename: Required. The filename returned from the call to SC-Import-File
+    #>
+    param(
+        [Parameter(Mandatory=$true)]
+          [string]$filename,
+        [string]$name
+    )
+    $dict = @{ "name" = $name; "filename" = $filename; }
+
+    SC-Connect -scResource reportDefinition/import -scHTTPMethod POST -scJSONInput $dict -scAdditionalHeadersDict @{"Content-Type" = "application/json"}
 }

@@ -14,6 +14,7 @@ try {  ### Begin module import block ###
     # Subresources to load / Components of this module
     $modules = @(
         "$PSScriptRoot\sc_api_modules\sc.asset.ps1",
+        "$PSScriptRoot\sc_api_modules\sc.assetTemplate.ps1",
         "$PSScriptRoot\sc_api_modules\sc.analysis.ps1",
         "$PSScriptRoot\sc_api_modules\sc.auditfile.ps1",
         "$PSScriptRoot\sc_api_modules\sc.communication.ps1",
@@ -22,12 +23,13 @@ try {  ### Begin module import block ###
         "$PSScriptRoot\sc_api_modules\sc.file.ps1",
         "$PSScriptRoot\sc_api_modules\sc.plugin.ps1",
         "$PSScriptRoot\sc_api_modules\sc.policy.ps1",
-        "$PSScriptRoot\sc_api_modules\sc.reports.ps1",
+        "$PSScriptRoot\sc_api_modules\sc.reportDefinition.ps1",
         "$PSScriptRoot\sc_api_modules\sc.repository.ps1",
         "$PSScriptRoot\sc_api_modules\sc.rolesgroups.ps1",
         "$PSScriptRoot\sc_api_modules\sc.scan.ps1",
+        "$PSScriptRoot\sc_api_modules\sc.scanner.ps1",
         "$PSScriptRoot\sc_api_modules\sc.scanResult.ps1",
-        "$PSScriptRoot\sc_api_modules\sc.users.ps1",
+        "$PSScriptRoot\sc_api_modules\sc.user.ps1",
         "$PSScriptRoot\sc_api_modules\sc.zone.ps1",
         "$PSScriptRoot\sc_api_modules\utils.ps1"
     )

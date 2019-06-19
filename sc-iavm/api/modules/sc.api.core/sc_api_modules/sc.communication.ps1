@@ -167,7 +167,11 @@ function SC-Connect {
             "analysis",
             "analysis/download",
             "asset",
+            "asset/import",
             "asset/-ID-/export",
+            "asset/tags",
+            "assetTemplate",
+            "assetTemplate/categories",
             "auditFile",
             "auditFileTemplate",
             "auditFileTemplate/categories",
@@ -176,6 +180,7 @@ function SC-Connect {
             "currentOrganization",
             "currentUser",
             "feed",
+            "file/clear",
             "file/upload",
             "group",
             "ipInfo",
@@ -189,6 +194,7 @@ function SC-Connect {
             "policy/-ID-/export",
             "query",
             "reportDefinition",
+            "reportDefinition/import",
             "reportDefinition/-ID-/export",
             "repository",
             "repository/-ID-/ipInfo",
@@ -197,6 +203,10 @@ function SC-Connect {
             "scanner",
             "scanResult",
             "scanResult/import",
+            "scanResult/-ID-/stop",
+            "scanResult/-ID-/pause",
+            "scanResult/-ID-/resume",
+            "scanResult/-ID-/download",
             "status",
             "system",
             "ticket",
@@ -329,7 +339,8 @@ function SC-Connect {
         "policy/-ID-/export",
         "reportDefinition/-ID-/export",
         "asset/-ID-/export",
-        "analysis/download"
+        "analysis/download",
+        "scanResult/-ID-/download"
     )
     if ($scResource -notin $specialReturnFormats) {
         _SC-Connect-CheckError($scResponse)
