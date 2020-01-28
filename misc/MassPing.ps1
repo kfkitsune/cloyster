@@ -64,12 +64,13 @@ while ($true) {
     if (!(Get-Job -State Running)) {
         break
     }
-    Write-Progress -Activity "Waiting for ping jobs to complete" -Status "Percent completed: " -PercentComplete (((Get-Job | Where-Object {$_.State -eq 'Completed'}).Count / (Get-Job).Count) * 100)
+    Write-Progress -Activity "Waiting for ping jobs to complete" -Status ("Percent completed: " + (((Get-Job | Where-Object {$_.State -eq 'Completed'}).Count / (Get-Job).Count) * 100)) -PercentComplete (((Get-Job | Where-Object {$_.State -eq 'Completed'}).Count / (Get-Job).Count) * 100)
     Start-Sleep -Milliseconds 500
 }
 
 # Get all jobs & store the results
 $completed_jobs = Get-Job -State Completed -HasMoreData $true
+Clear-Variable -Name results -ErrorAction SilentlyContinue
 foreach ($job in $completed_jobs) {
     $results += $job | Receive-Job | Where-Object { $_.StatusCode -eq 0 } | Select-Object Address, IPv4Address
 }
@@ -86,7 +87,7 @@ foreach ($result in $results) {
         "Octet2" = [int]$octets.Groups[2].Value;
         "Octet3" = [int]$octets.Groups[3].Value;
         "Octet4" = [int]$octets.Groups[4].Value;
-        }
+    }
 }
 
 # Sort and output to file once complete.
