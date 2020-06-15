@@ -5,11 +5,6 @@ $target_ad_searchbase = "OU=Main,DC=contoso,DC=com"
 # Only return users older than the specified days (via Get-ADUser filter)
 $days_for_filtering = 30
 
-# Such as if you want to exclude an OU from processing (e.g., service accounts)
-$distinguishedNamesToExclude = [scriptblock]{
-    ($_.DistinguishedName -notlike "*,OU=MISCELLANEOUS,*") -and
-}
-
 # Convenience functions... because AD uses filetime, I guess?
 function Convert-FileTimeToDateTime() {
     param(
@@ -37,54 +32,98 @@ function Convert-DateTimeToFileTime() {
 Import-Module -ErrorAction Stop ActiveDirectory
 
 # Get a listing of all domain controllers for the current domain
-$epoch = Get-Date
 $ad_information = Get-ADDomain
 $target_domain_controllers = $ad_information.ReplicaDirectoryServers -like ($target_dc_prefix + "*")
+$date_now = Get-Date
 
 # Get a list of candidate users older than the filtered time
-$filter_datetime = Convert-DateTimeToFileTime -datetime (Get-Date).AddDays(-1 * $days_for_filtering)
-$users = Get-ADComputer -SearchBase $target_ad_searchbase -SearchScope Subtree -Filter "lastLogon -lt $filter_datetime"
-$users = $users | Where-Object -FilterScript $distinguishedNamesToExclude
+# $filter_datetime = Convert-DateTimeToFileTime -datetime (Get-Date).AddDays(-1 * $days_for_filtering)
 
+# Initialize the AD query storage location...
+$datastore = [System.Collections.Generic.List[System.Object]]::new(1000000)
 
-# Iterate over each user to determine--by DC--what the true last logon date was
-$storage = @(); $count = 0; $progress_activity = "Getting last logon dates"
-foreach($user in $users) {
-    $count++
-    Write-Progress -id 0 -Activity $progress_activity -CurrentOperation $user.Name -PercentComplete (100 * ($count / $users.Count))
+# Get all targeted objects from each domain controller
+foreach($dc in $target_domain_controllers) {
+    # Build out the AD searcher [Ref: https://stackoverflow.com/a/60419117]
+    # Why manual? Because this takes F O R E V E R when using the cmdlets
+    $ad_searcher = [adsisearcher]::new([adsi]"LDAP://$dc/$target_ad_searchbase", "(objectCategory=user)")
+    $ad_searcher.PropertiesToLoad.Add("name") > $null
+    $ad_searcher.PropertiesToLoad.Add("samaccountname") > $null
+    $ad_searcher.PropertiesToLoad.Add("distinguishedName") > $null
+    $ad_searcher.PropertiesToLoad.Add("userAccountControl") > $null  # Ref: https://stackoverflow.com/a/47099079
+    $ad_searcher.PropertiesToLoad.Add("lastlogon") > $null
+    $ad_searcher.PropertiesToLoad.Add("lastlogontimestamp") > $null
+    $ad_searcher.PropertiesToLoad.Add("objectClass") > $null
+    $ad_searcher.PageSize = 1000
 
-    # Query each DC for the lastLogon of the user
-    $ad_user_info_results = @() 
-    foreach($dc in $target_domain_controllers) {
-        Write-Progress -id 1 -Activity $progress_activity -CurrentOperation "Querying domain controller: $dc"
-        $ad_user_info_results += Get-ADComputer -Identity $user -Properties lastLogon,lastLogonTimestamp,displayName -Server $dc
+    Write-Host -ForegroundColor Gray "Retrieving data from DC [$dc]..."
+    $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+    $results = $ad_searcher.FindAll()
+    $results | Measure-Object > $null  # Because it wants to die mid-processing and/or not retrieve data until actual use?
+    Write-Host -ForegroundColor DarkGray ("[DEBUG] Data retrieval took "+ $stopwatch.Elapsed.TotalSeconds + " seconds; " + $results.Count + " objects found")
+
+    $counter = 0
+    foreach($obj in $results) {
+        Write-Progress -id 0 -Activity "Storing data [$dc]" -CurrentOperation $obj.Name -PercentComplete (100* ($counter/$results.Count))
+        if ($obj.Properties.objectclass -contains "contact") {
+            continue  # Skip contact AD Objects...
+        }
+        # Load the resulting information into the data store
+        $data = [PSCustomObject]@{
+            'name' = $obj.Properties['name'][0].ToString()
+            'samaccountname' = $obj.Properties['samaccountname'][0].ToString()
+            'distinguishedName' = $obj.Properties['distinguishedname'][0].ToString()
+            'enabled' = ($obj.Properties['useraccountcontrol'].Item(0) -band 2) -ne 2
+            'lastLogon' = $obj.Properties['lastlogon'][0]
+            'lastLogonTimestamp' = $obj.Properties['lastlogontimestamp'][0]
+            '_domain_controller' = $dc
+        }
+        $datastore.Add($data)
+        $counter += 1
     }
-    Write-Progress -Id 1 -Completed -Activity $progress_activity
+    $ad_searcher.Dispose()
+    Write-Progress -id 0 -complete -Activity "Storing data [$dc]"
+}
 
-    $lastlogon_datetimes = $ad_user_info_results | ForEach-Object {Convert-FileTimeToDateTime($_.lastLogon)}
+# Combine the results from each DC down to a single collection
+$grouped_results = $datastore | Group-Object -Property samaccountname
+
+
+$datastore = [System.Collections.Generic.List[System.Object]]::new(1000000);
+$count = 0; $progress_activity = "Processing last logon dates"; $stopwatch.Reset(); $stopwatch.Start()
+foreach($result in $grouped_results) {
+    if ($stopwatch.Elapsed.TotalMilliseconds -ge 500) {
+        Write-Progress -id 0 -Activity $progress_activity -CurrentOperation "$count records processed" -PercentComplete (100 * ($count / $grouped_results.Count))
+        $stopwatch.Reset(); $stopwatch.Start()
+    }
+
+    # Ignore service accounts or other things to avoid
+    if($result.Group[0].DistinguishedName -notlike "*,OU=MISCELLANEOUS,*") {
+
+    }
+
+    $lastlogon_datetimes = $result.Group | ForEach-Object {Convert-FileTimeToDateTime($_.lastLogon)}
     if ($lastlogon_datetimes) {
         $latest_logon_date = ($lastlogon_datetimes | Sort-Object -Descending)[0]
     }
-    $lastlogontimestamp_datetimes = $ad_user_info_results | ForEach-Object {Convert-FileTimeToDateTime($_.lastLogonTimestamp)}
+    $lastlogontimestamp_datetimes = $result.Group | ForEach-Object {Convert-FileTimeToDateTime($_.lastLogonTimestamp)}
     if ($lastlogontimestamp_datetimes) {
         $latest_lastlogontimestamp_date = ($lastlogontimestamp_datetimes | Sort-Object -Descending)[0]
     }
-    
-    $storage += [PSCustomObject]@{
-        "SamAccountName" = $ad_user_info_results[0].SamAccountName;
-        "Display Name" = $ad_user_info_results[0].displayName;
-        "Enabled" = $user.Enabled;
-        "Last Login" = $latest_logon_date;
-        "Days Since Last Login" = (New-TimeSpan -Start $latest_logon_date -End $epoch).Days;
-        "Latest Last Logon Timestamp (Replicates)" = $latest_lastlogontimestamp_date;
-        "Days Since Latest Last Logon Timestamp" = (New-TimeSpan -Start $latest_lastlogontimestamp_date -End $epoch).Days;
-        "All Available LastLogon Dates" = $lastlogon_datetimes -join " | ";
-        "All Available LastLogonTimestamp Dates" = $lastlogontimestamp_datetimes -join " | ";
-        "distinguishedName" = $user.DistinguishedName;
+
+    $data = [PSCustomObject]@{
+        "Name" = $result.Group[0].name
+        "SamAccountName" = $result.Group[0].samaccountname
+        "Enabled" = $result.Group[0].enabled
+        "Last Login" = $latest_logon_date
+        "Days Since Last Login" = (New-TimeSpan -Start $latest_logon_date -End $date_now).Days
+        "Latest Last Logon Timestamp (Replicates)" = $latest_lastlogontimestamp_date
+        "Days Since Latest Last Logon Timestamp" = (New-TimeSpan -Start $latest_lastlogontimestamp_date -End $date_now).Days
+        "All Available LastLogon Dates" = $lastlogon_datetimes -join " | "
+        "All Available LastLogonTimestamp Dates" = $lastlogontimestamp_datetimes -join " | "
+        "distinguishedName" = $result.Group[0].distinguishedName
     }
-    
-    # Mostly for debugging output...
-    $timespan = New-TimeSpan -Start $latest_logon_date -End $epoch
-    Write-Host($ad_user_info_results[0].SamAccountName + " | " + $latest_logon_date + " | " + $timespan.Days)
+    $datastore.Add($data)
+    $count += 1
 }
 Write-Progress -id 0 -Completed -Activity $progress_activity
