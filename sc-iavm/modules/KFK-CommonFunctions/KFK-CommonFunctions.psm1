@@ -1,6 +1,8 @@
 <#
-Commonly used script functions.
+Commonly used script functions. Because a single source of truth beats copied code in
+individual scripts.
 #>
+
 function Pause-Script ($Message = "Press any key to continue . . . ") {
 	If ($psISE) {
 		# The "ReadKey" functionality is not supported in Windows PowerShell ISE.
@@ -64,6 +66,9 @@ function Invoke-CertificateChooser {
 
 
 function Remove-InvalidFilenameCharacters() {
+    <#
+    Creates a sanitized Windows-acceptable filename (everything invalid is simply stripped)
+    #>
     Param(
         [Parameter(Mandatory=$true)]
         [string]$name
@@ -73,4 +78,86 @@ function Remove-InvalidFilenameCharacters() {
     $tmp = $name -replace $re
     # Windows has a 255 maxlength on a filename... truncate to 255.
     return (($tmp).Substring(0, [System.Math]::Min(255, $tmp.Length)))
+}
+
+
+function Get-FileName() {
+    <#
+    Retrieve a file name from a GUI-based file picker
+
+    Parameters:
+      - initialDirectory: String. The file path to set the file picker to initially.
+      - filter: String. Determines the choices that appear in the "Save as file type" or "Files of type" box in the dialog box
+      Ref: https://docs.microsoft.com/en-us/dotnet/api/system.windows.forms.filedialog.filter
+      Defaults to all files ("All files (*.*)|*.*").
+      - dialog_type: String/Switch. Whether this should be a save or open dialog. Defaults to open. Only valid for 'open' or 'save'.`
+    
+    Returns:
+        The full path to the selected file
+    #>  # Yes, it's a Pythonic comment... hiss!
+    param(
+        [string]$initial_directory,
+        [string]$filter = "All files (*.*)|*.*",
+        [ValidateSet("save","open")]
+          [string]$dialog_type = "open"
+    )
+    [System.Reflection.Assembly]::LoadWithPartialName("System.Windows.Forms") | Out-Null
+    if ($dialog_type -eq "open") {
+        $OpenFileDialog = New-Object System.Windows.Forms.OpenFileDialog
+    }
+    else {
+        $OpenFileDialog = New-Object System.Windows.Forms.SaveFileDialog
+    }
+    $OpenFileDialog.initialDirectory = $initial_directory
+    $OpenFileDialog.filter = @($filter)
+    $OpenFileDialog.ShowDialog() | Out-Null
+    $OpenFileDialog.filename
+}
+
+
+function Convert-FileTimeToDateTime() {
+    <#
+        Converts a Windows filetime to a DateTime object.
+
+        Ref: https://docs.microsoft.com/en-us/windows/win32/sysinfo/file-times
+
+        Parameters:
+          - time: int64. The file time to convert
+          - from_utc: Switch. Converts the specified Windows file time to an equivalent UTC time.
+    #>
+    param(
+        [Parameter(Mandatory=$true)]
+          [Int64][ValidateScript({$_ -ge 0})]$time,
+        [switch]$from_utc
+    )
+    if ($from_utc) {
+        return [DateTime]::FromFileTimeUtc($time)
+    }
+    else {
+        return [datetime]::FromFileTime($time)
+    }
+}
+
+
+function Convert-DateTimeToFileTime() {
+    <#
+        Converts a DateTime object to a Windows filetime int64.
+
+        Ref: https://docs.microsoft.com/en-us/windows/win32/sysinfo/file-times
+
+        Parameters:
+          - datetime: DateTime object. The DateTime to convert to a filetime
+          - to_utc: Switch. Converts the specified UTC DateTime to an equivalent UTC file time.
+    #>
+    param(
+        [Parameter(Mandatory=$true)]
+          [DateTime]$datetime,
+        [switch]$to_utc
+    )
+    if ($to_utc) {
+        return $datetime.ToFileTimeUtc()
+    }
+    else {
+        return $datetime.ToFileTime()
+    }
 }
