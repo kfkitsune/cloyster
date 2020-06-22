@@ -1,35 +1,26 @@
 # The prefix for the domain controllers to check (e.g., "NYC" for NYC001, NYC002, NYC003)
 $target_dc_prefix = "NYC"
-# The AD SearchBase (i.e., OU) to constrain getting users from (e.g., OU=Users,DC=contoso,DC=com)
+# The AD SearchBase (i.e., OU) to constrain getting objects from (e.g., OU=Users,DC=contoso,DC=com)
 $target_ad_searchbase = "OU=Main,DC=contoso,DC=com"
 # Only return users older than the specified days (via Get-ADUser filter)
 $days_for_filtering = 30
 
-# Convenience functions... because AD uses filetime, I guess?
-function Convert-FileTimeToDateTime() {
-    param(
-        [Parameter(Mandatory=$true)]
-        [Int64][ValidateScript({$_ -ge 0})]$time
-    )
-    if ($time) {
-        return [datetime]::FromFileTime($time)
-    }
-}
-
-
-function Convert-DateTimeToFileTime() {
-    param(
-        [Parameter(Mandatory=$true)]
-        [DateTime]$datetime
-    )
-    if ($datetime) {
-        return $datetime.ToFileTime()
-    }
-}
-
 
 # Module imports
-Import-Module -ErrorAction Stop ActiveDirectory
+try {  ### Begin module import block ###
+    $location_of_modules = ";$env:USERPROFILE\Documents\AuthScripts\modules"
+    if ($env:PSModulePath -notlike ('*' + $location_of_modules + '*')) {
+        $env:PSModulePath += $location_of_modules
+    }
+    Import-Module KFK-CommonFunctions -Function ("Convert-FileTimeToDateTime", "Convert-DateTimeToFileTime", "Get-FileName") -ErrorAction Stop
+    Import-Module -ErrorAction Stop ActiveDirectory
+}
+catch [System.IO.FileNotFoundException] {
+    Write-Host -ForegroundColor Red "Unable to load required module... terminating execution..."
+    Start-Sleep -Seconds 5
+    exit
+} ### End module import block ###
+
 
 # Get a listing of all domain controllers for the current domain
 $ad_information = Get-ADDomain
@@ -127,3 +118,7 @@ foreach($result in $grouped_results) {
     $count += 1
 }
 Write-Progress -id 0 -Completed -Activity $progress_activity
+
+# Save the file
+$target_file_path = Get-FileName -filter "CSV Files (*.csv)|*.csv" -dialog_type save
+$datastore | ConvertTo-Csv -NoTypeInformation | Out-File -FilePath $target_file_path
