@@ -22,25 +22,13 @@ Write-Host -ForegroundColor Cyan "Getting information from AD; this may take a m
 $ad_results = Get-ADComputer -SearchBase $ou -SearchScope Subtree -Filter "*" -Properties OperatingSystem,OperatingSystemVersion
 Write-Host -ForegroundColor Cyan "AD Pull complete; continuing...`n`r"
 
-$operating_systems_count = @{}
-
-# Select each OS name set in the system properties, where it is not null...
-# Extract the unique OSes
-$os_names = ($ad_results | Select-Object -Unique operatingSystem | Where-Object {$_.operatingSystem -ne $null})
-foreach($os_name in $os_names) {
-    # Extract the versions for the OS
-    $os_versions = $ad_results | Where-Object {$_.operatingSystem -eq $os_name.operatingSystem} | Select -Unique operatingSystemVersion
-    foreach($os_version in $os_versions) {
-        $os_name_ver = $os_name.operatingSystem + " | Version: " + $os_version.operatingSystemVersion
-        # Get the count of OS per OS version
-        $count = (($ad_results | Where-Object {($_.operatingSystem -eq $os_name.operatingSystem) -and ($_.operatingSystemVersion -eq $os_version.operatingSystemVersion)}) | Measure-Object).Count
-        $operating_systems_count += @{$os_name_ver = $count}
-        Write-Host -foregroundcolor Gray "Processed $os_name_ver ..."
-    }
-}
+# Group and display results
+# $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+$results = $ad_results | Group-Object -Property OperatingSystem,OperatingSystemVersion | Sort-Object -Property Name | Select Name,Count
+# Write-Host $stopwatch.Elapsed
 
 Write-Host "---------- Raw Results ----------" -ForegroundColor Green
-$operating_systems_count.GetEnumerator() | Sort-Object -Property Name | Format-Table -AutoSize
+$results.GetEnumerator() | Format-Table -AutoSize
 
 # Store the Server/Workstation OS'es to group together
 $server_scriptblock = [System.Management.Automation.ScriptBlock]{
