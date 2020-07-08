@@ -28,7 +28,7 @@ $date_now = Get-Date
 Write-Host -ForegroundColor Cyan "Do you want to retrieve last logon dates for:"
 Write-Host -ForegroundColor Cyan "[1] User objects"
 Write-Host -ForegroundColor Cyan "[2] Computer objects"
-$input = [int](Read-Host -Prompt "Enter [1] or [2]; other values assume computer; <Ctrl+C> to exit")
+$input = [int](Read-Host -Prompt "Enter [1] or [2]; other values assume user; <Ctrl+C> to exit")
 if ($input -eq 1) {
     $object_type = "user"
 }
