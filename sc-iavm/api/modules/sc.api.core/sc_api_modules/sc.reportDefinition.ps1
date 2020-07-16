@@ -45,25 +45,44 @@ function SC-Get-ReportDefinitions() {
 }
 
 
+function SC-Delete-ReportDefinition() {
+    <#
+        Deletes a specified report definition, as identified by its ID number.
+    #>
+    param(
+        [Parameter(Mandatory=$true)]
+        [ValidateScript({$_ -ge 0})]
+          [int]$id
+    )
+
+    return SC-Connect -scResource reportDefinition -scHTTPMethod DELETE -scResourceID $id
+}
+
+
 function SC-Edit-ReportDefinition() {
     <#
         Edits an existing report definition, changing only the passed parameters/fields.
 
         Not fully implemented (in this API, but there is a full reference in the API documentation).
-        Currently only used here to template a report definition (AKA, unschedule/change to on demand).
+        Currently only used here to template a report definition (AKA, unschedule/change to on demand), or to
+        update the additional email recipients.
 
-        https://docs.tenable.com/sccv/api/Report-Definition.html
+        https://docs.tenable.com/tenablesc/api/Report-Definition.htm
     #>
     param(
         [Parameter(Mandatory=$true)]
         [ValidateScript({$_ -ge 0})]
           [int]$id,
         [ValidateSet("template")]
-          [string]$newScheduleType = $null
+          [string]$newScheduleType = $null,
+        [string]$newEmailTargets = $null
     )
     $dict = @{}
     if ($newScheduleType -eq "template") {
         $dict += @{"schedule" = @{"type" = "template"}}
+    }
+    if ($newEmailTargets) {
+        $dict += @{"emailTargets" = $newEmailTargets}
     }
 
     # We must have something to change before we send (more validation)
